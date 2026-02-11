@@ -1,68 +1,177 @@
+'use client';
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { useFlows } from '@/lib/hooks/useFlows';
+import { useExecutions } from '@/lib/hooks/useExecutions';
+import {
+  PlayCircle,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  FileText,
+  TrendingUp,
+  Activity
+} from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 
-export default function Page() {
+export default function DashboardPage() {
+  const { data: flowsData } = useFlows();
+  const { data: executionsData } = useExecutions({});
+
+  const flows = flowsData?.flows || [];
+  const executions = executionsData?.executions || [];
+
+  // Calculate statistics
+  const totalFlows = flows.length;
+  const totalExecutions = executions.length;
+  const completedExecutions = executions.filter(e => e.status === 'completed').length;
+  const failedExecutions = executions.filter(e => e.status === 'failed').length;
+  const successRate = totalExecutions > 0
+    ? Math.round((completedExecutions / totalExecutions) * 100)
+    : 0;
+
+  // Recent executions (last 5)
+  const recentExecutions = executions.slice(0, 5);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <Badge variant="default" className="gap-1"><CheckCircle2 className="w-3 h-3" />Completed</Badge>;
+      case 'failed':
+        return <Badge variant="destructive" className="gap-1"><XCircle className="w-3 h-3" />Failed</Badge>;
+      case 'running':
+        return <Badge variant="secondary" className="gap-1"><Clock className="w-3 h-3" />Running</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   return (
-    <div className="container mx-auto py-16">
-      <div className="max-w-4xl mx-auto text-center space-y-8">
-        <div className="space-y-4">
-          <h1 className="text-5xl font-bold">TestMesh</h1>
-          <p className="text-xl text-muted-foreground">
-            E2E Integration Testing Platform
-          </p>
-          <p className="text-muted-foreground">
-            Write tests in YAML and execute them across multiple protocols
-          </p>
-        </div>
-
-        <div className="flex gap-4 justify-center">
-          <Link href="/flows">
-            <Button size="lg">View Flows</Button>
-          </Link>
-          <Link href="/flows/new">
-            <Button size="lg" variant="outline">Create Flow</Button>
-          </Link>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mt-12">
-          <Card>
-            <CardHeader>
-              <CardTitle>HTTP Requests</CardTitle>
-              <CardDescription>
-                Test REST APIs with GET, POST, PUT, DELETE
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              Full support for headers, body, and assertions
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Database Queries</CardTitle>
-              <CardDescription>
-                Execute SQL queries against PostgreSQL
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              INSERT, SELECT, UPDATE, DELETE with parameterized queries
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Assertions</CardTitle>
-              <CardDescription>
-                Validate responses with expressions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              JSONPath, boolean expressions, and status code checks
-            </CardContent>
-          </Card>
-        </div>
+    <div className="container mx-auto py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <p className="text-muted-foreground mt-1">
+          Monitor your test flows and execution statistics
+        </p>
       </div>
+
+      {/* Statistics Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Flows</CardTitle>
+            <FileText className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalFlows}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Active test flows
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Executions</CardTitle>
+            <Activity className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalExecutions}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {completedExecutions} passed, {failedExecutions} failed
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{successRate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Based on {totalExecutions} executions
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
+            <PlayCircle className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Link href="/flows/new">
+              <Button size="sm" className="w-full">Create Flow</Button>
+            </Link>
+            <Link href="/flows">
+              <Button size="sm" variant="outline" className="w-full">
+                View All Flows
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Executions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Executions</CardTitle>
+          <CardDescription>Latest test flow executions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentExecutions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No executions yet. Create and run a flow to see results here.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentExecutions.map((execution) => (
+                <Link
+                  key={execution.id}
+                  href={`/executions/${execution.id}`}
+                  className="block"
+                >
+                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {execution.flow?.name || 'Unknown Flow'}
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {execution.passed_steps} / {execution.total_steps} steps passed
+                        {execution.duration_ms && ` • ${execution.duration_ms}ms`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        {execution.started_at
+                          ? formatDistanceToNow(new Date(execution.started_at), {
+                              addSuffix: true,
+                            })
+                          : '-'}
+                      </div>
+                      {getStatusBadge(execution.status)}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+          {recentExecutions.length > 0 && (
+            <div className="mt-4 text-center">
+              <Link href="/executions">
+                <Button variant="ghost" size="sm">
+                  View All Executions
+                </Button>
+              </Link>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

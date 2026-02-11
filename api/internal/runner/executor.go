@@ -301,6 +301,18 @@ func (e *Executor) getActionHandler(actionType string) (actions.Handler, error) 
 		return actions.NewHTTPHandler(e.logger), nil
 	case "database_query":
 		return actions.NewDatabaseHandler(e.logger), nil
+	case "log":
+		return actions.NewLogHandler(e.logger), nil
+	case "delay":
+		return actions.NewDelayHandler(e.logger), nil
+	case "transform":
+		return actions.NewTransformHandler(e.logger), nil
+	case "assert":
+		return actions.NewAssertHandler(e.logger), nil
+	case "condition":
+		return actions.NewConditionHandler(e.logger, nil), nil
+	case "for_each":
+		return actions.NewForEachHandler(e.logger, nil), nil
 	default:
 		return nil, fmt.Errorf("unknown action type: %s", actionType)
 	}

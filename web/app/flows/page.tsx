@@ -22,11 +22,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Play, Trash2, Eye, Plus } from 'lucide-react';
+import { Play, Trash2, Eye, Plus, X, Search } from 'lucide-react';
 
 export default function FlowsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [suiteFilter, setSuiteFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
 
   const { data, isLoading, error } = useFlows({
     suite: suiteFilter || undefined,
@@ -53,8 +54,26 @@ export default function FlowsPage() {
     const matchesSearch =
       flow.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       flow.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+
+    const matchesSuite = !suiteFilter || flow.suite?.toLowerCase().includes(suiteFilter.toLowerCase());
+
+    const matchesTag = !tagFilter || flow.tags?.some(tag =>
+      tag.toLowerCase().includes(tagFilter.toLowerCase())
+    );
+
+    return matchesSearch && matchesSuite && matchesTag;
   });
+
+  // Get unique suites and tags for filtering
+  const allSuites = [...new Set(flows.map(f => f.suite).filter(Boolean))];
+  const allTags = [...new Set(flows.flatMap(f => f.tags || []))];
+
+  const hasActiveFilters = searchQuery || suiteFilter || tagFilter;
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSuiteFilter('');
+    setTagFilter('');
+  };
 
   if (error) {
     return (
@@ -90,19 +109,79 @@ export default function FlowsPage() {
 
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <Input
-              placeholder="Search flows..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-            />
-            <Input
-              placeholder="Filter by suite..."
-              value={suiteFilter}
-              onChange={(e) => setSuiteFilter(e.target.value)}
-              className="w-64"
-            />
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search flows by name or description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Input
+                placeholder="Filter by suite..."
+                value={suiteFilter}
+                onChange={(e) => setSuiteFilter(e.target.value)}
+                className="w-64"
+              />
+              <Input
+                placeholder="Filter by tag..."
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="w-64"
+              />
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearFilters}
+                  title="Clear filters"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+
+            {hasActiveFilters && (
+              <div className="flex gap-2 items-center text-sm text-muted-foreground">
+                <span>Active filters:</span>
+                {searchQuery && (
+                  <Badge variant="secondary" className="gap-1">
+                    Search: {searchQuery}
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="ml-1 hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                )}
+                {suiteFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Suite: {suiteFilter}
+                    <button
+                      onClick={() => setSuiteFilter('')}
+                      className="ml-1 hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                )}
+                {tagFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Tag: {tagFilter}
+                    <button
+                      onClick={() => setTagFilter('')}
+                      className="ml-1 hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
