@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useFlows } from '@/lib/hooks/useFlows';
 import { useExecutions } from '@/lib/hooks/useExecutions';
+import { useMockServers } from '@/lib/hooks/useMockServers';
+import { useContracts } from '@/lib/hooks/useContracts';
 import {
   PlayCircle,
   CheckCircle2,
@@ -13,16 +15,22 @@ import {
   Clock,
   FileText,
   TrendingUp,
-  Activity
+  Activity,
+  Server,
+  FileCode
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function DashboardPage() {
   const { data: flowsData } = useFlows();
   const { data: executionsData } = useExecutions({});
+  const { data: mockServersData } = useMockServers({});
+  const { data: contractsData } = useContracts({});
 
   const flows = flowsData?.flows || [];
   const executions = executionsData?.executions || [];
+  const mockServers = mockServersData?.servers || [];
+  const contracts = contractsData?.contracts || [];
 
   // Calculate statistics
   const totalFlows = flows.length;
@@ -32,6 +40,8 @@ export default function DashboardPage() {
   const successRate = totalExecutions > 0
     ? Math.round((completedExecutions / totalExecutions) * 100)
     : 0;
+  const runningMockServers = mockServers.filter(s => s.status === 'running').length;
+  const totalContracts = contracts.length;
 
   // Recent executions (last 5)
   const recentExecutions = executions.slice(0, 5);
@@ -59,7 +69,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Flows</CardTitle>
@@ -98,6 +108,36 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
+
+        <Link href="/mocks">
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Mock Servers</CardTitle>
+              <Server className="w-4 h-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{mockServers.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {runningMockServers} running
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/contracts">
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Contracts</CardTitle>
+              <FileCode className="w-4 h-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalContracts}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pact contracts
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">

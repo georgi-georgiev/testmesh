@@ -7,6 +7,8 @@ import (
 
 	"github.com/georgi-georgiev/testmesh/internal/runner/actions"
 	"github.com/georgi-georgiev/testmesh/internal/runner/assertions"
+	"github.com/georgi-georgiev/testmesh/internal/runner/contracts"
+	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -15,9 +17,11 @@ import (
 
 // Executor orchestrates flow execution
 type Executor struct {
-	repo      *repository.ExecutionRepository
-	logger    *zap.Logger
-	wsHub     WSHub // WebSocket hub interface
+	repo         *repository.ExecutionRepository
+	contractRepo *repository.ContractRepository
+	logger       *zap.Logger
+	wsHub        WSHub // WebSocket hub interface
+	mockManager  *mocks.Manager
 }
 
 // WSHub interface for WebSocket broadcasting
@@ -31,11 +35,13 @@ type WSHub interface {
 }
 
 // NewExecutor creates a new executor instance
-func NewExecutor(repo *repository.ExecutionRepository, logger *zap.Logger, wsHub WSHub) *Executor {
+func NewExecutor(repo *repository.ExecutionRepository, contractRepo *repository.ContractRepository, logger *zap.Logger, wsHub WSHub, mockManager *mocks.Manager) *Executor {
 	return &Executor{
-		repo:   repo,
-		logger: logger,
-		wsHub:  wsHub,
+		repo:         repo,
+		contractRepo: contractRepo,
+		logger:       logger,
+		wsHub:        wsHub,
+		mockManager:  mockManager,
 	}
 }
 
@@ -313,6 +319,34 @@ func (e *Executor) getActionHandler(actionType string) (actions.Handler, error) 
 		return actions.NewConditionHandler(e.logger, nil), nil
 	case "for_each":
 		return actions.NewForEachHandler(e.logger, nil), nil
+	case "mock_server_start":
+		if e.mockManager == nil {
+			return nil, fmt.Errorf("mock manager not initialized")
+		}
+		return actions.NewMockServerStartHandler(e.mockManager, e.logger), nil
+	case "mock_server_stop":
+		if e.mockManager == nil {
+			return nil, fmt.Errorf("mock manager not initialized")
+		}
+		return actions.NewMockServerStopHandler(e.mockManager, e.logger), nil
+	case "mock_server_configure":
+		if e.mockManager == nil {
+			return nil, fmt.Errorf("mock manager not initialized")
+		}
+		return actions.NewMockServerConfigureHandler(e.mockManager, e.logger), nil
+	case "contract_generate":
+		if e.contractRepo == nil {
+			return nil, fmt.Errorf("contract repository not initialized")
+		}
+		generator := contracts.NewGenerator(e.contractRepo, e.logger)
+		return actions.NewContractGenerateHandler(generator, e.repo, e.logger), nil
+	case "contract_verify":
+		if e.contractRepo == nil {
+			return nil, fmt.Errorf("contract repository not initialized")
+		}
+		verifier := contracts.NewVerifier(e.contractRepo, e.logger)
+		differ := contracts.NewDiffer(e.contractRepo, e.logger)
+		return actions.NewContractVerifyHandler(verifier, differ, e.logger), nil
 	default:
 		return nil, fmt.Errorf("unknown action type: %s", actionType)
 	}

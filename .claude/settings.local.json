@@ -22,7 +22,8 @@
       "Bash(go get:*)",
       "Bash(pnpm run build:*)",
       "Bash(pnpm add:*)",
-      "Bash(./testmesh:*)"
+      "Bash(./testmesh:*)",
+      "Bash(xargs -I {} bash -c \"echo ''''=== {} ==='''' && head -40 {}\")"
     ]
   }
 }

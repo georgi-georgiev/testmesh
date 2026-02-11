@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/runner"
+	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -14,19 +15,23 @@ import (
 
 // ExecutionHandler handles execution-related requests
 type ExecutionHandler struct {
-	execRepo *repository.ExecutionRepository
-	flowRepo *repository.FlowRepository
-	logger   *zap.Logger
-	wsHub    runner.WSHub
+	execRepo     *repository.ExecutionRepository
+	flowRepo     *repository.FlowRepository
+	mockRepo     *repository.MockRepository
+	contractRepo *repository.ContractRepository
+	logger       *zap.Logger
+	wsHub        runner.WSHub
 }
 
 // NewExecutionHandler creates a new execution handler
-func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
+func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, mockRepo *repository.MockRepository, contractRepo *repository.ContractRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
 	return &ExecutionHandler{
-		execRepo: execRepo,
-		flowRepo: flowRepo,
-		logger:   logger,
-		wsHub:    wsHub,
+		execRepo:     execRepo,
+		flowRepo:     flowRepo,
+		mockRepo:     mockRepo,
+		contractRepo: contractRepo,
+		logger:       logger,
+		wsHub:        wsHub,
 	}
 }
 
@@ -83,8 +88,12 @@ func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models
 	execution.StartedAt = &now
 	h.execRepo.Update(execution)
 
+	// Create mock manager for this execution
+	mockManager := mocks.NewManager(h.mockRepo, h.logger)
+	defer mockManager.StopAllServers() // Ensure all mock servers are stopped
+
 	// Execute flow using the runner
-	executor := runner.NewExecutor(h.execRepo, h.logger, h.wsHub)
+	executor := runner.NewExecutor(h.execRepo, h.contractRepo, h.logger, h.wsHub, mockManager)
 	err := executor.Execute(execution, &flow.Definition, variables)
 
 	// Update execution status

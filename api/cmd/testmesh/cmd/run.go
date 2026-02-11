@@ -83,8 +83,8 @@ func runFlow(cmd *cobra.Command, args []string) error {
 	now := time.Now()
 	execution.StartedAt = &now
 
-	// Create executor (without database and websocket for local execution)
-	executor := runner.NewExecutor(nil, log, nil)
+	// Create executor (without database, websocket, mock manager, and contract repo for local execution)
+	executor := runner.NewExecutor(nil, nil, log, nil, nil)
 
 	// Execute flow
 	startTime := time.Now()
