@@ -6,13 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/api/handlers"
 	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
+	"github.com/georgi-georgiev/testmesh/internal/api/websocket"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the API router
-func NewRouter(db *gorm.DB, logger *zap.Logger) *gin.Engine {
+func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engine {
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -30,7 +31,8 @@ func NewRouter(db *gorm.DB, logger *zap.Logger) *gin.Engine {
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
 	flowHandler := handlers.NewFlowHandler(flowRepo, logger)
-	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, logger)
+	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, logger, wsHub)
+	wsHandler := websocket.NewHandler(wsHub, logger)
 
 	// Health check
 	router.GET("/health", healthHandler.Check)
@@ -60,8 +62,8 @@ func NewRouter(db *gorm.DB, logger *zap.Logger) *gin.Engine {
 		}
 	}
 
-	// WebSocket routes (will implement in Phase 4)
-	// router.GET("/ws/executions/:id", websocketHandler.HandleConnection)
+	// WebSocket routes
+	router.GET("/ws/executions/:id", wsHandler.HandleConnection)
 
 	// 404 handler
 	router.NoRoute(func(c *gin.Context) {

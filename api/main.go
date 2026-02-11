@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/georgi-georgiev/testmesh/internal/api"
+	"github.com/georgi-georgiev/testmesh/internal/api/websocket"
 	"github.com/georgi-georgiev/testmesh/internal/shared/config"
 	"github.com/georgi-georgiev/testmesh/internal/shared/database"
 	"github.com/georgi-georgiev/testmesh/internal/shared/logger"
@@ -38,8 +39,12 @@ func main() {
 		log.Fatal("Failed to auto-migrate database", zap.Error(err))
 	}
 
+	// Initialize WebSocket hub
+	wsHub := websocket.NewHub(log)
+	go wsHub.Run()
+
 	// Initialize API server
-	router := api.NewRouter(db, log)
+	router := api.NewRouter(db, log, wsHub)
 
 	// Create HTTP server
 	srv := &http.Server{

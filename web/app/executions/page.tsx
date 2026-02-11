@@ -33,10 +33,10 @@ import { formatDistanceToNow } from 'date-fns';
 import type { ExecutionStatus } from '@/lib/api/types';
 
 export default function ExecutionsPage() {
-  const [statusFilter, setStatusFilter] = useState<ExecutionStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<ExecutionStatus | 'all'>('all');
 
   const { data, isLoading, error } = useExecutions({
-    status: statusFilter || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
   });
 
   const executions = data?.executions || [];
@@ -101,14 +101,14 @@ export default function ExecutionsPage() {
             <Select
               value={statusFilter}
               onValueChange={(value) =>
-                setStatusFilter(value as ExecutionStatus | '')
+                setStatusFilter(value as ExecutionStatus | 'all')
               }
             >
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All statuses</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
                 <SelectItem value="running">Running</SelectItem>

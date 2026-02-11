@@ -18,7 +18,10 @@
       "Bash(cat EOF {flow_id:995bf775-0837-4814-ae57-259e2f5cd65a,environment:test} EOF curl -s -X POST http://localhost:8080/api/v1/executions -H 'Content-Type: application/json' -d @/tmp/execute-with-assertions.json)",
       "Bash(npm install:*)",
       "Bash(pnpm install:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(go get:*)",
+      "Bash(pnpm run build:*)",
+      "Bash(pnpm add:*)"
     ]
   }
 }

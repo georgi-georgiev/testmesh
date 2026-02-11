@@ -9,20 +9,33 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/runner/assertions"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // Executor orchestrates flow execution
 type Executor struct {
-	repo   *repository.ExecutionRepository
-	logger *zap.Logger
+	repo      *repository.ExecutionRepository
+	logger    *zap.Logger
+	wsHub     WSHub // WebSocket hub interface
+}
+
+// WSHub interface for WebSocket broadcasting
+type WSHub interface {
+	BroadcastExecutionStarted(executionID uuid.UUID, data map[string]interface{})
+	BroadcastExecutionCompleted(executionID uuid.UUID, data map[string]interface{})
+	BroadcastExecutionFailed(executionID uuid.UUID, data map[string]interface{})
+	BroadcastStepStarted(executionID uuid.UUID, data map[string]interface{})
+	BroadcastStepCompleted(executionID uuid.UUID, data map[string]interface{})
+	BroadcastStepFailed(executionID uuid.UUID, data map[string]interface{})
 }
 
 // NewExecutor creates a new executor instance
-func NewExecutor(repo *repository.ExecutionRepository, logger *zap.Logger) *Executor {
+func NewExecutor(repo *repository.ExecutionRepository, logger *zap.Logger, wsHub WSHub) *Executor {
 	return &Executor{
 		repo:   repo,
 		logger: logger,
+		wsHub:  wsHub,
 	}
 }
 
@@ -36,6 +49,14 @@ func (e *Executor) Execute(execution *models.Execution, definition *models.FlowD
 	// Count total steps
 	totalSteps := len(definition.Setup) + len(definition.Steps) + len(definition.Teardown)
 	execution.TotalSteps = totalSteps
+
+	// Broadcast execution started
+	if e.wsHub != nil {
+		e.wsHub.BroadcastExecutionStarted(execution.ID, map[string]interface{}{
+			"flow_name":   definition.Name,
+			"total_steps": totalSteps,
+		})
+	}
 
 	// Execute setup steps
 	if len(definition.Setup) > 0 {
@@ -96,6 +117,16 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 			return err
 		}
 
+		// Broadcast step started
+		if e.wsHub != nil {
+			e.wsHub.BroadcastStepStarted(execution.ID, map[string]interface{}{
+				"step_id":   stepID,
+				"step_name": step.Name,
+				"action":    step.Action,
+				"phase":     phase,
+			})
+		}
+
 		// Execute the step with retry logic
 		result, err := e.executeStepWithRetry(ctx, &step, execStep, execCtx)
 
@@ -110,6 +141,16 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 			e.repo.UpdateStep(execStep)
 
 			execution.FailedSteps++
+
+			// Broadcast step failed
+			if e.wsHub != nil {
+				e.wsHub.BroadcastStepFailed(execution.ID, map[string]interface{}{
+					"step_id":       stepID,
+					"step_name":     step.Name,
+					"error_message": err.Error(),
+					"duration_ms":   execStep.DurationMs,
+				})
+			}
 
 			// Wrap error with execution context
 			execErr := NewExecutionError(
@@ -128,6 +169,16 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 		e.repo.UpdateStep(execStep)
 
 		execution.PassedSteps++
+
+		// Broadcast step completed
+		if e.wsHub != nil {
+			e.wsHub.BroadcastStepCompleted(execution.ID, map[string]interface{}{
+				"step_id":     stepID,
+				"step_name":   step.Name,
+				"status":      string(execStep.Status),
+				"duration_ms": execStep.DurationMs,
+			})
+		}
 
 		// Store step output in context
 		if step.Output != nil {

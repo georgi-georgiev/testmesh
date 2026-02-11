@@ -17,14 +17,16 @@ type ExecutionHandler struct {
 	execRepo *repository.ExecutionRepository
 	flowRepo *repository.FlowRepository
 	logger   *zap.Logger
+	wsHub    runner.WSHub
 }
 
 // NewExecutionHandler creates a new execution handler
-func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, logger *zap.Logger) *ExecutionHandler {
+func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
 	return &ExecutionHandler{
 		execRepo: execRepo,
 		flowRepo: flowRepo,
 		logger:   logger,
+		wsHub:    wsHub,
 	}
 }
 
@@ -81,8 +83,8 @@ func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models
 	execution.StartedAt = &now
 	h.execRepo.Update(execution)
 
-	// Execute flow using the runner (we'll implement this in Phase 1)
-	executor := runner.NewExecutor(h.execRepo, h.logger)
+	// Execute flow using the runner
+	executor := runner.NewExecutor(h.execRepo, h.logger, h.wsHub)
 	err := executor.Execute(execution, &flow.Definition, variables)
 
 	// Update execution status
@@ -93,8 +95,26 @@ func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models
 	if err != nil {
 		execution.Status = models.ExecutionStatusFailed
 		execution.Error = err.Error()
+
+		// Broadcast execution failed
+		if h.wsHub != nil {
+			h.wsHub.BroadcastExecutionFailed(execution.ID, map[string]interface{}{
+				"error":       execution.Error,
+				"duration_ms": execution.DurationMs,
+			})
+		}
 	} else {
 		execution.Status = models.ExecutionStatusCompleted
+
+		// Broadcast execution completed
+		if h.wsHub != nil {
+			h.wsHub.BroadcastExecutionCompleted(execution.ID, map[string]interface{}{
+				"passed_steps": execution.PassedSteps,
+				"failed_steps": execution.FailedSteps,
+				"total_steps":  execution.TotalSteps,
+				"duration_ms":  execution.DurationMs,
+			})
+		}
 	}
 
 	h.execRepo.Update(execution)

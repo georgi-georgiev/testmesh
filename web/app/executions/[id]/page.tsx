@@ -1,8 +1,9 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import Link from 'next/link';
 import { useExecution, useExecutionSteps } from '@/lib/hooks/useExecutions';
+import { useWebSocket } from '@/lib/hooks/useWebSocket';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,8 +24,22 @@ export default function ExecutionDetailPage({
 }) {
   const { id } = use(params);
 
-  const { data: execution, isLoading, error } = useExecution(id);
-  const { data: stepsData } = useExecutionSteps(id);
+  const { data: execution, isLoading, error, refetch: refetchExecution } = useExecution(id);
+  const { data: stepsData, refetch: refetchSteps } = useExecutionSteps(id);
+
+  // Connect to WebSocket for real-time updates
+  const { isConnected, lastMessage } = useWebSocket({
+    executionId: id,
+    onMessage: (event) => {
+      console.log('WebSocket event:', event);
+
+      // Refetch execution and steps on any update
+      if (event.type.startsWith('execution.') || event.type.startsWith('step.')) {
+        refetchExecution();
+        refetchSteps();
+      }
+    },
+  });
 
   const steps = stepsData?.steps || [];
 
@@ -112,7 +127,15 @@ export default function ExecutionDetailPage({
               </p>
             )}
           </div>
-          <div>{getStatusBadge(execution.status)}</div>
+          <div className="flex items-center gap-2">
+            {isConnected && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Live
+              </Badge>
+            )}
+            {getStatusBadge(execution.status)}
+          </div>
         </div>
       </div>
 
