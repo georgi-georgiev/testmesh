@@ -3,7 +3,22 @@
     "allow": [
       "Bash(find:*)",
       "Bash(ls:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(curl:*)",
+      "Bash(jq:*)",
+      "Bash(./testmesh-api:*)",
+      "Bash(psql:*)",
+      "Bash(lsof:*)",
+      "Bash(docker exec:*)",
+      "Bash(cat EOF {flow_id:96150407-473c-40a5-b4a4-bee404081851,environment:development} EOF curl -s -X POST http://localhost:8080/api/v1/executions -H 'Content-Type: application/json' -d @/tmp/execute-flow.json)",
+      "Bash(pkill:*)",
+      "Bash(cat EOF {flow_id:995bf775-0837-4814-ae57-259e2f5cd65a,environment:test} EOF curl -s -X POST http://localhost:8080/api/v1/executions -H 'Content-Type: application/json' -d @/tmp/execute-with-assertions.json)",
+      "Bash(npm install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm build:*)"
     ]
   }
 }
