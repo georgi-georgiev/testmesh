@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: testmesh-postgres
+    environment:
+      POSTGRES_USER: testmesh
+      POSTGRES_PASSWORD: testmesh_dev
+      POSTGRES_DB: testmesh
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./api/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testmesh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Caching + Distributed Locking)
+  redis:
+    image: redis:7-alpine
+    container_name: testmesh-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API (Go Backend)
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    container_name: testmesh-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: testmesh
+      DB_PASSWORD: testmesh_dev
+      DB_NAME: testmesh
+      DB_SSLMODE: disable
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Server
+      PORT: 8080
+      ENV: development
+      LOG_LEVEL: debug
+
+      # CORS
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - ./api:/app
+      - /app/bin  # Exclude bin directory
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: go run main.go
+
+  # Web (Next.js Frontend)
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    container_name: testmesh-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+      NODE_ENV: development
+    volumes:
+      - ./web:/app
+      - /app/node_modules  # Exclude node_modules
+      - /app/.next         # Exclude .next build folder
+    depends_on:
+      - api
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: testmesh-network
