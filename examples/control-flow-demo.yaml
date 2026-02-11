@@ -3,7 +3,7 @@ flow:
   description: "Demonstrates new control flow actions: log, delay, for_each, and http_request assertions"
   suite: "examples"
 
-steps:
+  steps:
   # 1. Log action - Simple logging at info level
   - id: log_start
     name: "Log workflow start"

@@ -21,7 +21,8 @@
       "Bash(pnpm build:*)",
       "Bash(go get:*)",
       "Bash(pnpm run build:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(./testmesh:*)"
     ]
   }
 }
