@@ -6,6 +6,7 @@ import type {
   AnalyzeCoverageRequest,
   SuggestionStatus,
   AIProviderType,
+  GenerationStatus,
 } from '../api/types';
 
 // Query keys
@@ -17,6 +18,18 @@ export const aiKeys = {
   suggestionsList: (flowId: string, status?: SuggestionStatus) =>
     [...aiKeys.suggestions(), 'list', flowId, status] as const,
   suggestionDetail: (id: string) => [...aiKeys.suggestions(), 'detail', id] as const,
+  generationHistory: () => [...aiKeys.all, 'generation-history'] as const,
+  generationHistoryList: (filters: Record<string, any>) =>
+    [...aiKeys.generationHistory(), 'list', filters] as const,
+  generationHistoryDetail: (id: string) => [...aiKeys.generationHistory(), 'detail', id] as const,
+  importHistory: () => [...aiKeys.all, 'import-history'] as const,
+  importHistoryList: (filters: Record<string, any>) =>
+    [...aiKeys.importHistory(), 'list', filters] as const,
+  importHistoryDetail: (id: string) => [...aiKeys.importHistory(), 'detail', id] as const,
+  coverageAnalysis: () => [...aiKeys.all, 'coverage-analysis'] as const,
+  coverageAnalysisList: (filters: Record<string, any>) =>
+    [...aiKeys.coverageAnalysis(), 'list', filters] as const,
+  coverageAnalysisDetail: (id: string) => [...aiKeys.coverageAnalysis(), 'detail', id] as const,
 };
 
 // Provider hooks
@@ -153,5 +166,78 @@ export function useRejectSuggestion() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiKeys.suggestions() });
     },
+  });
+}
+
+export function useDeleteSuggestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => aiApi.deleteSuggestion(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: aiKeys.suggestions() });
+    },
+  });
+}
+
+// Generation History hooks
+export function useGenerationHistory(params?: {
+  status?: GenerationStatus;
+  provider?: AIProviderType;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: aiKeys.generationHistoryList(params || {}),
+    queryFn: () => aiApi.listGenerationHistory(params),
+  });
+}
+
+export function useGenerationHistoryDetail(id: string) {
+  return useQuery({
+    queryKey: aiKeys.generationHistoryDetail(id),
+    queryFn: () => aiApi.getGenerationHistory(id),
+    enabled: !!id,
+  });
+}
+
+// Import History hooks
+export function useImportHistory(params?: {
+  source_type?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: aiKeys.importHistoryList(params || {}),
+    queryFn: () => aiApi.listImportHistory(params),
+  });
+}
+
+export function useImportHistoryDetail(id: string) {
+  return useQuery({
+    queryKey: aiKeys.importHistoryDetail(id),
+    queryFn: () => aiApi.getImportHistory(id),
+    enabled: !!id,
+  });
+}
+
+// Coverage Analysis hooks
+export function useCoverageAnalyses(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: aiKeys.coverageAnalysisList(params || {}),
+    queryFn: () => aiApi.listCoverageAnalyses(params),
+  });
+}
+
+export function useCoverageAnalysisDetail(id: string) {
+  return useQuery({
+    queryKey: aiKeys.coverageAnalysisDetail(id),
+    queryFn: () => aiApi.getCoverageAnalysis(id),
+    enabled: !!id,
   });
 }

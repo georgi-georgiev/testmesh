@@ -81,3 +81,12 @@ func (r *ExecutionRepository) GetSteps(executionID uuid.UUID) ([]models.Executio
 func (r *ExecutionRepository) UpdateStep(step *models.ExecutionStep) error {
 	return r.db.Save(step).Error
 }
+
+// GetStepByID retrieves a specific execution step by ID
+func (r *ExecutionRepository) GetStepByID(id uuid.UUID) (*models.ExecutionStep, error) {
+	var step models.ExecutionStep
+	if err := r.db.First(&step, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &step, nil
+}

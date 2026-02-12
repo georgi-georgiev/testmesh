@@ -15,7 +15,13 @@ export const mockServerKeys = {
     'requests',
     filters,
   ] as const,
+  request: (serverId: string, requestId: string) => [
+    ...mockServerKeys.detail(serverId),
+    'request',
+    requestId,
+  ] as const,
   states: (id: string) => [...mockServerKeys.detail(id), 'states'] as const,
+  state: (serverId: string, key: string) => [...mockServerKeys.states(serverId), key] as const,
 };
 
 // Hooks for mock servers
@@ -117,6 +123,78 @@ export function useDeleteMockEndpoint() {
       mockServerApi.deleteEndpoint(serverId, endpointId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: mockServerKeys.endpoints(variables.serverId) });
+    },
+  });
+}
+
+// State management hooks
+export function useCreateMockState() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      serverId,
+      data,
+    }: {
+      serverId: string;
+      data: { state_key: string; state_value: any };
+    }) => mockServerApi.createState(serverId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.states(variables.serverId) });
+    },
+  });
+}
+
+export function useUpdateMockState() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      serverId,
+      key,
+      data,
+    }: {
+      serverId: string;
+      key: string;
+      data: { state_value: any };
+    }) => mockServerApi.updateState(serverId, key, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.states(variables.serverId) });
+      queryClient.invalidateQueries({
+        queryKey: mockServerKeys.state(variables.serverId, variables.key),
+      });
+    },
+  });
+}
+
+export function useDeleteMockState() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ serverId, key }: { serverId: string; key: string }) =>
+      mockServerApi.deleteState(serverId, key),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.states(variables.serverId) });
+    },
+  });
+}
+
+// Request management hooks
+export function useMockServerRequest(serverId: string, requestId: string) {
+  return useQuery({
+    queryKey: mockServerKeys.request(serverId, requestId),
+    queryFn: () => mockServerApi.getRequest(serverId, requestId),
+    enabled: !!serverId && !!requestId,
+  });
+}
+
+export function useClearMockRequests() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (serverId: string) => mockServerApi.clearRequests(serverId),
+    onSuccess: (_, serverId) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.requests(serverId, {}) });
     },
   });
 }

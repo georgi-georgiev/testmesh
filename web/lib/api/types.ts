@@ -8,6 +8,8 @@ export interface Flow {
   tags: string[];
   definition: FlowDefinition;
   environment: string;
+  collection_id?: string;
+  sort_order?: number;
   created_at: string;
   updated_at: string;
 }
@@ -715,4 +717,146 @@ export interface AIUsageStats {
 export interface GetUsageResponse {
   stats: AIUsageStats[];
   providers: AIProviderType[];
+}
+
+// AI History Response Types
+export interface ListGenerationHistoryResponse {
+  history: GenerationHistory[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListImportHistoryResponse {
+  history: ImportHistory[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListCoverageAnalysisResponse {
+  analyses: CoverageAnalysis[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Contract Interactions Response Types
+export interface ListInteractionsResponse {
+  interactions: Interaction[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Collection Types
+export interface Collection {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  color?: string;
+  parent_id?: string;
+  sort_order: number;
+  variables: CollectionVariables;
+  auth: CollectionAuth;
+  flows?: Flow[];
+  children?: Collection[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionVariables {
+  environment?: Record<string, any>;
+  global?: Record<string, any>;
+}
+
+export interface CollectionAuth {
+  type: 'none' | 'basic' | 'bearer' | 'api_key' | 'oauth2';
+  inherit?: boolean;
+  basic?: {
+    username: string;
+    password: string;
+  };
+  bearer?: {
+    token: string;
+    prefix?: string;
+  };
+  api_key?: {
+    key: string;
+    value: string;
+    in: 'header' | 'query';
+  };
+  oauth2?: {
+    grant_type: 'authorization_code' | 'client_credentials' | 'password' | 'implicit';
+    client_id: string;
+    client_secret?: string;
+    auth_url?: string;
+    token_url?: string;
+    redirect_uri?: string;
+    scope?: string;
+    access_token?: string;
+    refresh_token?: string;
+    token_expiry?: string;
+  };
+}
+
+export interface CollectionTreeNode {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  type: 'collection' | 'flow';
+  sort_order: number;
+  children?: CollectionTreeNode[];
+  flow_id?: string;
+}
+
+// Collection API Requests/Responses
+export interface CreateCollectionRequest {
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  parent_id?: string;
+  variables?: CollectionVariables;
+  auth?: CollectionAuth;
+}
+
+export interface UpdateCollectionRequest {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  variables?: CollectionVariables;
+  auth?: CollectionAuth;
+}
+
+export interface ListCollectionsResponse {
+  collections: Collection[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GetCollectionTreeResponse {
+  tree: CollectionTreeNode[];
+}
+
+export interface AddFlowToCollectionRequest {
+  flow_id: string;
+  sort_order?: number;
+}
+
+export interface MoveCollectionRequest {
+  parent_id?: string | null;
+  sort_order?: number;
+}
+
+export interface ReorderItemsRequest {
+  items: Array<{
+    id: string;
+    sort_order: number;
+  }>;
 }

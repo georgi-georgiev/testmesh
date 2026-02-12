@@ -54,7 +54,8 @@ const createAxiosInstance = (): AxiosInstance => {
   return instance;
 };
 
-const apiClient = createAxiosInstance();
+// Export for use by other API modules
+export const apiClient = createAxiosInstance();
 
 // Health API
 export const healthApi = {
@@ -134,6 +135,13 @@ export const executionApi = {
 
   getSteps: async (id: string): Promise<GetStepsResponse> => {
     const response = await apiClient.get<GetStepsResponse>(`/api/v1/executions/${id}/steps`);
+    return response.data;
+  },
+
+  getStep: async (executionId: string, stepId: string): Promise<import('./types').ExecutionStep> => {
+    const response = await apiClient.get<import('./types').ExecutionStep>(
+      `/api/v1/executions/${executionId}/steps/${stepId}`
+    );
     return response.data;
   },
 };

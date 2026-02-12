@@ -27,7 +27,11 @@
       "Bash(xargs:*)",
       "Bash(tree:*)",
       "Bash(npm run build:*)",
-      "Bash(npx shadcn@latest add checkbox collapsible tabs dialog progress --yes)"
+      "Bash(npx shadcn@latest add checkbox collapsible tabs dialog progress --yes)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm next build:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm exec shadcn@latest add:*)"
     ]
   }
 }

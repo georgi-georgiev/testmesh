@@ -13,16 +13,18 @@ import (
 
 // Flow represents a test flow definition
 type Flow struct {
-	ID          uuid.UUID      `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	Name        string         `gorm:"not null;index" json:"name"`
-	Description string         `json:"description"`
-	Suite       string         `gorm:"index" json:"suite"`
-	Tags        StringArray    `gorm:"type:text[]" json:"tags"`
-	Definition  FlowDefinition `gorm:"type:jsonb;not null" json:"definition"`
-	Environment string         `gorm:"default:'default'" json:"environment"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ID           uuid.UUID      `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	Name         string         `gorm:"not null;index" json:"name"`
+	Description  string         `json:"description"`
+	Suite        string         `gorm:"index" json:"suite"`
+	Tags         StringArray    `gorm:"type:text[]" json:"tags"`
+	Definition   FlowDefinition `gorm:"type:jsonb;not null" json:"definition"`
+	Environment  string         `gorm:"default:'default'" json:"environment"`
+	CollectionID *uuid.UUID     `gorm:"type:uuid;index" json:"collection_id,omitempty"` // Optional collection membership
+	SortOrder    int            `gorm:"default:0" json:"sort_order"`                    // Order within collection
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // StringArray is a custom type for PostgreSQL text arrays

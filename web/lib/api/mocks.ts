@@ -113,6 +113,49 @@ export const mockServerApi = {
     );
     return response.data;
   },
+
+  // Create state
+  createState: async (
+    serverId: string,
+    data: { state_key: string; state_value: any }
+  ): Promise<MockState> => {
+    const response = await apiClient.post<MockState>(
+      `/api/v1/mock-servers/${serverId}/state`,
+      data
+    );
+    return response.data;
+  },
+
+  // Update state
+  updateState: async (
+    serverId: string,
+    key: string,
+    data: { state_value: any }
+  ): Promise<MockState> => {
+    const response = await apiClient.put<MockState>(
+      `/api/v1/mock-servers/${serverId}/state/${key}`,
+      data
+    );
+    return response.data;
+  },
+
+  // Delete state
+  deleteState: async (serverId: string, key: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/mock-servers/${serverId}/state/${key}`);
+  },
+
+  // Get specific request by ID
+  getRequest: async (serverId: string, requestId: string): Promise<MockRequest> => {
+    const response = await apiClient.get<MockRequest>(
+      `/api/v1/mock-servers/${serverId}/requests/${requestId}`
+    );
+    return response.data;
+  },
+
+  // Clear all request logs
+  clearRequests: async (serverId: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/mock-servers/${serverId}/requests`);
+  },
 };
 
 export default mockServerApi;

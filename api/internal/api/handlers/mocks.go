@@ -274,3 +274,137 @@ func (h *MockHandler) DeleteServer(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "server deleted"})
 }
+
+// CreateState handles POST /api/v1/mock-servers/:id/state
+func (h *MockHandler) CreateState(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	var req struct {
+		StateKey   string                 `json:"state_key" binding:"required"`
+		StateValue map[string]interface{} `json:"state_value" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	state := &models.MockState{
+		MockServerID: serverID,
+		StateKey:     req.StateKey,
+		StateValue:   req.StateValue,
+	}
+
+	if err := h.repo.CreateState(state); err != nil {
+		h.logger.Error("Failed to create state", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create state"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, state)
+}
+
+// UpdateState handles PUT /api/v1/mock-servers/:id/state/:key
+func (h *MockHandler) UpdateState(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	stateKey := c.Param("key")
+	if stateKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "state key is required"})
+		return
+	}
+
+	var req struct {
+		StateValue map[string]interface{} `json:"state_value" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get existing state or create new one
+	state, err := h.repo.GetState(serverID, stateKey)
+	if err != nil {
+		// Create new state if not found
+		state = &models.MockState{
+			MockServerID: serverID,
+			StateKey:     stateKey,
+		}
+	}
+
+	state.StateValue = req.StateValue
+
+	if err := h.repo.UpsertState(state); err != nil {
+		h.logger.Error("Failed to update state", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update state"})
+		return
+	}
+
+	c.JSON(http.StatusOK, state)
+}
+
+// DeleteState handles DELETE /api/v1/mock-servers/:id/state/:key
+func (h *MockHandler) DeleteState(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	stateKey := c.Param("key")
+	if stateKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "state key is required"})
+		return
+	}
+
+	if err := h.repo.DeleteState(serverID, stateKey); err != nil {
+		h.logger.Error("Failed to delete state", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete state"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "state deleted"})
+}
+
+// GetRequest handles GET /api/v1/mock-servers/:id/requests/:request_id
+func (h *MockHandler) GetRequest(c *gin.Context) {
+	requestID, err := uuid.Parse(c.Param("request_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request ID"})
+		return
+	}
+
+	request, err := h.repo.GetRequestByID(requestID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "request not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, request)
+}
+
+// DeleteRequests handles DELETE /api/v1/mock-servers/:id/requests
+func (h *MockHandler) DeleteRequests(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	if err := h.repo.DeleteRequests(serverID); err != nil {
+		h.logger.Error("Failed to delete requests", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete requests"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "request logs cleared"})
+}

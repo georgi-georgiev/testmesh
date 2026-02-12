@@ -160,3 +160,27 @@ func (r *MockRepository) ListStates(serverID uuid.UUID) ([]models.MockState, err
 func (r *MockRepository) DeleteServer(id uuid.UUID) error {
 	return r.db.Delete(&models.MockServer{}, "id = ?", id).Error
 }
+
+// DeleteState deletes a state entry for a mock server
+func (r *MockRepository) DeleteState(serverID uuid.UUID, stateKey string) error {
+	return r.db.Delete(&models.MockState{}, "mock_server_id = ? AND state_key = ?", serverID, stateKey).Error
+}
+
+// GetRequestByID retrieves a specific mock request by ID
+func (r *MockRepository) GetRequestByID(id uuid.UUID) (*models.MockRequest, error) {
+	var request models.MockRequest
+	if err := r.db.First(&request, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
+// DeleteRequests deletes all request logs for a mock server
+func (r *MockRepository) DeleteRequests(serverID uuid.UUID) error {
+	return r.db.Delete(&models.MockRequest{}, "mock_server_id = ?", serverID).Error
+}
+
+// CreateState creates a new state entry for a mock server
+func (r *MockRepository) CreateState(state *models.MockState) error {
+	return r.db.Create(state).Error
+}

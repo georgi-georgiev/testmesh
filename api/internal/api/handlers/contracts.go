@@ -289,3 +289,156 @@ func (h *ContractHandler) DeleteContract(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "contract deleted"})
 }
+
+// ListInteractions handles GET /api/v1/contracts/:id/interactions
+func (h *ContractHandler) ListInteractions(c *gin.Context) {
+	contractID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid contract ID"})
+		return
+	}
+
+	limit := 20
+	offset := 0
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
+		}
+	}
+
+	interactions, total, err := h.repo.ListInteractionsPaginated(contractID, limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to list interactions", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list interactions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"interactions": interactions,
+		"total":        total,
+		"limit":        limit,
+		"offset":       offset,
+	})
+}
+
+// GetInteraction handles GET /api/v1/contracts/:id/interactions/:interaction_id
+func (h *ContractHandler) GetInteraction(c *gin.Context) {
+	interactionID, err := uuid.Parse(c.Param("interaction_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid interaction ID"})
+		return
+	}
+
+	interaction, err := h.repo.GetInteractionByID(interactionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "interaction not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, interaction)
+}
+
+// DeleteInteraction handles DELETE /api/v1/contracts/:id/interactions/:interaction_id
+func (h *ContractHandler) DeleteInteraction(c *gin.Context) {
+	interactionID, err := uuid.Parse(c.Param("interaction_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid interaction ID"})
+		return
+	}
+
+	if err := h.repo.DeleteInteraction(interactionID); err != nil {
+		h.logger.Error("Failed to delete interaction", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete interaction"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "interaction deleted"})
+}
+
+// CreateVerification handles POST /api/v1/verifications
+func (h *ContractHandler) CreateVerification(c *gin.Context) {
+	var req struct {
+		ContractID      string `json:"contract_id" binding:"required"`
+		ProviderVersion string `json:"provider_version" binding:"required"`
+		ExecutionID     string `json:"execution_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	contractID, err := uuid.Parse(req.ContractID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid contract_id"})
+		return
+	}
+
+	verification := &models.Verification{
+		ContractID:      contractID,
+		ProviderVersion: req.ProviderVersion,
+		Status:          models.VerificationStatusPending,
+	}
+
+	if req.ExecutionID != "" {
+		execID, err := uuid.Parse(req.ExecutionID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid execution_id"})
+			return
+		}
+		verification.ExecutionID = &execID
+	}
+
+	if err := h.repo.CreateVerification(verification); err != nil {
+		h.logger.Error("Failed to create verification", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create verification"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, verification)
+}
+
+// UpdateVerification handles PUT /api/v1/verifications/:id
+func (h *ContractHandler) UpdateVerification(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid verification ID"})
+		return
+	}
+
+	verification, err := h.repo.GetVerificationByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "verification not found"})
+		return
+	}
+
+	var req struct {
+		Status  string                    `json:"status"`
+		Results *models.VerificationResults `json:"results"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Status != "" {
+		verification.Status = models.VerificationStatus(req.Status)
+	}
+	if req.Results != nil {
+		verification.Results = *req.Results
+	}
+
+	if err := h.repo.UpdateVerification(verification); err != nil {
+		h.logger.Error("Failed to update verification", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update verification"})
+		return
+	}
+
+	c.JSON(http.StatusOK, verification)
+}

@@ -22,6 +22,16 @@ export const contractKeys = {
   ] as const,
   verification: (id: string) => ['verifications', id] as const,
   breakingChanges: (id: string) => [...contractKeys.detail(id), 'breaking-changes'] as const,
+  interactions: (id: string, filters: Record<string, any>) => [
+    ...contractKeys.detail(id),
+    'interactions',
+    filters,
+  ] as const,
+  interaction: (contractId: string, interactionId: string) => [
+    ...contractKeys.detail(contractId),
+    'interaction',
+    interactionId,
+  ] as const,
 };
 
 // Hooks for contracts
@@ -125,6 +135,76 @@ export function useExportPact() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+    },
+  });
+}
+
+// Interaction hooks
+export function useContractInteractions(
+  contractId: string,
+  params?: { limit?: number; offset?: number }
+) {
+  return useQuery({
+    queryKey: contractKeys.interactions(contractId, params || {}),
+    queryFn: () => contractApi.listInteractions(contractId, params),
+    enabled: !!contractId,
+  });
+}
+
+export function useContractInteraction(contractId: string, interactionId: string) {
+  return useQuery({
+    queryKey: contractKeys.interaction(contractId, interactionId),
+    queryFn: () => contractApi.getInteraction(contractId, interactionId),
+    enabled: !!contractId && !!interactionId,
+  });
+}
+
+export function useDeleteInteraction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ contractId, interactionId }: { contractId: string; interactionId: string }) =>
+      contractApi.deleteInteraction(contractId, interactionId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: contractKeys.interactions(variables.contractId, {}),
+      });
+      queryClient.invalidateQueries({ queryKey: contractKeys.detail(variables.contractId) });
+    },
+  });
+}
+
+// Verification mutation hooks
+export function useCreateVerification() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { contract_id: string; provider_version: string; execution_id?: string }) =>
+      contractApi.createVerification(data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: contractKeys.verifications(variables.contract_id, {}),
+      });
+    },
+  });
+}
+
+export function useUpdateVerification() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { status?: VerificationStatus; results?: any };
+    }) => contractApi.updateVerification(id, data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: contractKeys.verification(data.id) });
+      queryClient.invalidateQueries({
+        queryKey: contractKeys.verifications(data.contract_id, {}),
+      });
     },
   });
 }

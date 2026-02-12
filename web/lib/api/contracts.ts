@@ -2,13 +2,16 @@ import axios from 'axios';
 import type {
   Contract,
   Verification,
+  Interaction,
   BreakingChange,
   ListContractsResponse,
   GetContractResponse,
   ListVerificationsResponse,
   ListBreakingChangesResponse,
   DetectBreakingChangesResponse,
+  ListInteractionsResponse,
   VerificationStatus,
+  VerificationResults,
 } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -116,6 +119,50 @@ export const contractApi = {
     const response = await apiClient.get<ListBreakingChangesResponse>(
       `/api/v1/contracts/${contractId}/breaking-changes`
     );
+    return response.data;
+  },
+
+  // List interactions for a contract
+  listInteractions: async (
+    contractId: string,
+    params?: { limit?: number; offset?: number }
+  ): Promise<ListInteractionsResponse> => {
+    const response = await apiClient.get<ListInteractionsResponse>(
+      `/api/v1/contracts/${contractId}/interactions`,
+      { params }
+    );
+    return response.data;
+  },
+
+  // Get specific interaction
+  getInteraction: async (contractId: string, interactionId: string): Promise<Interaction> => {
+    const response = await apiClient.get<Interaction>(
+      `/api/v1/contracts/${contractId}/interactions/${interactionId}`
+    );
+    return response.data;
+  },
+
+  // Delete interaction
+  deleteInteraction: async (contractId: string, interactionId: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/contracts/${contractId}/interactions/${interactionId}`);
+  },
+
+  // Create verification
+  createVerification: async (data: {
+    contract_id: string;
+    provider_version: string;
+    execution_id?: string;
+  }): Promise<Verification> => {
+    const response = await apiClient.post<Verification>('/api/v1/verifications', data);
+    return response.data;
+  },
+
+  // Update verification
+  updateVerification: async (
+    id: string,
+    data: { status?: VerificationStatus; results?: VerificationResults }
+  ): Promise<Verification> => {
+    const response = await apiClient.put<Verification>(`/api/v1/verifications/${id}`, data);
     return response.data;
   },
 };

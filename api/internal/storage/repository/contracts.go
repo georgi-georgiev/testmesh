@@ -101,6 +101,31 @@ func (r *ContractRepository) ListInteractions(contractID uuid.UUID) ([]models.In
 	return interactions, nil
 }
 
+// ListInteractionsPaginated retrieves interactions for a contract with pagination
+func (r *ContractRepository) ListInteractionsPaginated(contractID uuid.UUID, limit, offset int) ([]models.Interaction, int64, error) {
+	var interactions []models.Interaction
+	var total int64
+
+	query := r.db.Model(&models.Interaction{}).Where("contract_id = ?", contractID)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated results
+	if err := query.Order("created_at ASC").Limit(limit).Offset(offset).Find(&interactions).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return interactions, total, nil
+}
+
+// DeleteInteraction deletes an interaction by ID
+func (r *ContractRepository) DeleteInteraction(id uuid.UUID) error {
+	return r.db.Delete(&models.Interaction{}, "id = ?", id).Error
+}
+
 // GetInteractionByID retrieves an interaction by ID
 func (r *ContractRepository) GetInteractionByID(id uuid.UUID) (*models.Interaction, error) {
 	var interaction models.Interaction

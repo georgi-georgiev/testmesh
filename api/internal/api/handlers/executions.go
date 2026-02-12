@@ -247,3 +247,20 @@ func (h *ExecutionHandler) GetSteps(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"steps": steps})
 }
+
+// GetStep handles GET /api/v1/executions/:id/steps/:step_id
+func (h *ExecutionHandler) GetStep(c *gin.Context) {
+	stepID, err := uuid.Parse(c.Param("step_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid step ID"})
+		return
+	}
+
+	step, err := h.execRepo.GetStepByID(stepID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "step not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, step)
+}

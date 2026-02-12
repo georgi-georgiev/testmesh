@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/ai"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
+	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -14,6 +16,7 @@ import (
 // AIHandler handles AI-related requests
 type AIHandler struct {
 	db          *gorm.DB
+	repo        *repository.AIRepository
 	generator   *ai.Generator
 	analyzer    *ai.Analyzer
 	selfHealing *ai.SelfHealingEngine
@@ -24,6 +27,7 @@ type AIHandler struct {
 // NewAIHandler creates a new AI handler
 func NewAIHandler(
 	db *gorm.DB,
+	repo *repository.AIRepository,
 	generator *ai.Generator,
 	analyzer *ai.Analyzer,
 	selfHealing *ai.SelfHealingEngine,
@@ -32,6 +36,7 @@ func NewAIHandler(
 ) *AIHandler {
 	return &AIHandler{
 		db:          db,
+		repo:        repo,
 		generator:   generator,
 		analyzer:    analyzer,
 		selfHealing: selfHealing,
@@ -370,4 +375,170 @@ func (h *AIHandler) GetProviders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"providers": providers,
 	})
+}
+
+// ListGenerationHistory handles GET /api/v1/ai/generation-history
+func (h *AIHandler) ListGenerationHistory(c *gin.Context) {
+	status := models.GenerationStatus(c.Query("status"))
+	provider := models.AIProviderType(c.Query("provider"))
+
+	limit := 20
+	offset := 0
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
+		}
+	}
+
+	history, total, err := h.repo.ListGenerationHistory(status, provider, limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to list generation history", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list generation history"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"history": history,
+		"total":   total,
+		"limit":   limit,
+		"offset":  offset,
+	})
+}
+
+// GetGenerationHistory handles GET /api/v1/ai/generation-history/:id
+func (h *AIHandler) GetGenerationHistory(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid history ID"})
+		return
+	}
+
+	history, err := h.repo.GetGenerationHistoryByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "generation history not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, history)
+}
+
+// ListImportHistory handles GET /api/v1/ai/import-history
+func (h *AIHandler) ListImportHistory(c *gin.Context) {
+	sourceType := models.ImportSourceType(c.Query("source_type"))
+	status := models.ImportStatus(c.Query("status"))
+
+	limit := 20
+	offset := 0
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
+		}
+	}
+
+	history, total, err := h.repo.ListImportHistory(sourceType, status, limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to list import history", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list import history"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"history": history,
+		"total":   total,
+		"limit":   limit,
+		"offset":  offset,
+	})
+}
+
+// GetImportHistory handles GET /api/v1/ai/import-history/:id
+func (h *AIHandler) GetImportHistory(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid import ID"})
+		return
+	}
+
+	history, err := h.repo.GetImportHistoryByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "import history not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, history)
+}
+
+// ListCoverageAnalyses handles GET /api/v1/ai/coverage-analysis
+func (h *AIHandler) ListCoverageAnalyses(c *gin.Context) {
+	status := models.CoverageStatus(c.Query("status"))
+
+	limit := 20
+	offset := 0
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
+		}
+	}
+
+	analyses, total, err := h.repo.ListCoverageAnalyses(status, limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to list coverage analyses", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list coverage analyses"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"analyses": analyses,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
+}
+
+// GetCoverageAnalysis handles GET /api/v1/ai/coverage-analysis/:id
+func (h *AIHandler) GetCoverageAnalysis(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid analysis ID"})
+		return
+	}
+
+	analysis, err := h.repo.GetCoverageAnalysisByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "coverage analysis not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, analysis)
+}
+
+// DeleteSuggestion handles DELETE /api/v1/ai/suggestions/:id
+func (h *AIHandler) DeleteSuggestion(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid suggestion ID"})
+		return
+	}
+
+	if err := h.repo.DeleteSuggestion(id); err != nil {
+		h.logger.Error("Failed to delete suggestion", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete suggestion"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "suggestion deleted"})
 }
