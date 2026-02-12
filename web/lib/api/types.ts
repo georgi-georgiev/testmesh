@@ -373,3 +373,346 @@ export interface DetectBreakingChangesResponse {
     minor: number;
   };
 }
+
+// Reporting & Analytics Types
+
+export type ReportStatus = 'pending' | 'generating' | 'completed' | 'failed';
+export type ReportFormat = 'html' | 'json' | 'junit';
+
+export interface ReportFilters {
+  suites?: string[];
+  flow_ids?: string[];
+  tags?: string[];
+  environments?: string[];
+  statuses?: string[];
+}
+
+export interface Report {
+  id: string;
+  name: string;
+  format: ReportFormat;
+  status: ReportStatus;
+  filters: ReportFilters;
+  start_date: string;
+  end_date: string;
+  file_path?: string;
+  file_size: number;
+  generated_at?: string;
+  expires_at?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyMetric {
+  id: string;
+  date: string;
+  environment: string;
+  total_flows: number;
+  total_executions: number;
+  passed_executions: number;
+  failed_executions: number;
+  pass_rate: number;
+  avg_duration_ms: number;
+  p50_duration_ms: number;
+  p95_duration_ms: number;
+  p99_duration_ms: number;
+  total_steps: number;
+  passed_steps: number;
+  failed_steps: number;
+  by_flow_metrics?: Record<string, FlowMetricEntry>;
+  by_suite_metrics?: Record<string, SuiteMetricEntry>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FlowMetricEntry {
+  flow_id: string;
+  flow_name: string;
+  executions: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  avg_duration_ms: number;
+}
+
+export interface SuiteMetricEntry {
+  suite: string;
+  flows: number;
+  executions: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  avg_duration_ms: number;
+}
+
+export interface FlakinessMetric {
+  id: string;
+  flow_id: string;
+  flow?: Flow;
+  window_start_date: string;
+  window_end_date: string;
+  window_days: number;
+  total_executions: number;
+  passed_executions: number;
+  failed_executions: number;
+  transitions: number;
+  flakiness_score: number;
+  is_flaky: boolean;
+  failure_patterns?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StepPerformance {
+  id: string;
+  flow_id: string;
+  flow?: Flow;
+  step_id: string;
+  step_name: string;
+  action: string;
+  date: string;
+  execution_count: number;
+  passed_count: number;
+  failed_count: number;
+  pass_rate: number;
+  avg_duration_ms: number;
+  min_duration_ms: number;
+  max_duration_ms: number;
+  p50_duration_ms: number;
+  p95_duration_ms: number;
+  p99_duration_ms: number;
+  common_errors?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrendPoint {
+  date: string;
+  executions: number;
+  pass_rate: number;
+  avg_duration_ms: number;
+}
+
+// Reporting API Requests/Responses
+
+export interface GenerateReportRequest {
+  name: string;
+  format: ReportFormat;
+  start_date: string;
+  end_date: string;
+  filters?: ReportFilters;
+}
+
+export interface ListReportsResponse {
+  reports: Report[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GetMetricsResponse {
+  metrics: DailyMetric[];
+  start_date: string;
+  end_date: string;
+  summary: {
+    total_executions: number;
+    passed_executions: number;
+    failed_executions: number;
+    pass_rate: number;
+    avg_duration_ms: number;
+    total_steps: number;
+    passed_steps: number;
+    failed_steps: number;
+  };
+}
+
+export interface GetFlakinessResponse {
+  flaky_flows: FlakinessMetric[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GetFlakinessHistoryResponse {
+  flow_id: string;
+  history: FlakinessMetric[];
+}
+
+export interface GetTrendsResponse {
+  trends: TrendPoint[];
+  start_date: string;
+  end_date: string;
+  group_by: string;
+}
+
+export interface GetStepPerformanceResponse {
+  step_performance?: StepPerformance[];
+  slowest_steps?: StepPerformance[];
+  flow_id?: string;
+  action?: string;
+  start_date: string;
+  end_date: string;
+}
+
+// AI Types
+
+export type AIProviderType = 'anthropic' | 'openai' | 'local';
+export type GenerationStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type SuggestionStatus = 'pending' | 'accepted' | 'rejected' | 'applied';
+export type SuggestionType = 'fix' | 'optimization' | 'retry_strategy' | 'assertion' | 'timeout';
+
+export interface GenerationHistory {
+  id: string;
+  provider: AIProviderType;
+  model: string;
+  prompt: string;
+  status: GenerationStatus;
+  generated_yaml?: string;
+  flow_id?: string;
+  flow?: Flow;
+  tokens_used: number;
+  latency_ms: number;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Suggestion {
+  id: string;
+  flow_id: string;
+  flow?: Flow;
+  execution_id?: string;
+  execution?: Execution;
+  type: SuggestionType;
+  status: SuggestionStatus;
+  title: string;
+  description: string;
+  original_yaml: string;
+  suggested_yaml: string;
+  diff_patch?: string;
+  confidence: number;
+  reasoning: string;
+  applied_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ImportHistory {
+  id: string;
+  source_type: 'openapi' | 'postman' | 'pact';
+  source_name: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  flows_generated: number;
+  flow_ids: string[];
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CoverageAnalysis {
+  id: string;
+  spec_type: string;
+  spec_name: string;
+  status: 'pending' | 'analyzing' | 'completed' | 'failed';
+  total_endpoints: number;
+  covered_endpoints: number;
+  coverage_percent: number;
+  results: {
+    covered: EndpointCoverage[];
+    uncovered: EndpointCoverage[];
+    partial: EndpointCoverage[];
+  };
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EndpointCoverage {
+  method: string;
+  path: string;
+  operation_id?: string;
+  description?: string;
+  flow_ids?: string[];
+  coverage: number;
+  missing_tests?: string[];
+}
+
+// AI API Requests/Responses
+
+export interface GenerateFlowRequest {
+  prompt: string;
+  provider?: AIProviderType;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  create_flow?: boolean;
+}
+
+export interface GenerateFlowResponse {
+  history_id: string;
+  yaml: string;
+  flow: FlowDefinition;
+  tokens_used: number;
+  latency_ms: number;
+  provider: AIProviderType;
+  model: string;
+}
+
+export interface ImportOpenAPIRequest {
+  spec: string;
+  provider?: AIProviderType;
+  model?: string;
+  create_flows?: boolean;
+}
+
+export interface ImportResponse {
+  import_id: string;
+  flows_generated: number;
+  flow_ids: string[];
+  flows: Flow[];
+}
+
+export interface AnalyzeCoverageRequest {
+  spec: string;
+  base_url?: string;
+}
+
+export interface AnalyzeCoverageResponse {
+  analysis_id: string;
+  spec_name: string;
+  total_endpoints: number;
+  covered_endpoints: number;
+  coverage_percent: number;
+  covered: EndpointCoverage[];
+  uncovered: EndpointCoverage[];
+  partial: EndpointCoverage[];
+}
+
+export interface AnalyzeFailureResponse {
+  execution_id: string;
+  flow_id: string;
+  suggestions: Suggestion[];
+  analysis_notes: string;
+}
+
+export interface ListSuggestionsResponse {
+  suggestions: Suggestion[];
+  total: number;
+}
+
+export interface AIUsageStats {
+  provider: AIProviderType;
+  model: string;
+  date: string;
+  total_requests: number;
+  total_tokens: number;
+  success_count: number;
+  failure_count: number;
+  avg_latency_ms: number;
+}
+
+export interface GetUsageResponse {
+  stats: AIUsageStats[];
+  providers: AIProviderType[];
+}

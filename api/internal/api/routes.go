@@ -2,11 +2,15 @@ package api
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/ai"
 	"github.com/georgi-georgiev/testmesh/internal/api/handlers"
 	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/api/websocket"
+	"github.com/georgi-georgiev/testmesh/internal/reporting"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -29,6 +33,28 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	executionRepo := repository.NewExecutionRepository(db)
 	mockRepo := repository.NewMockRepository(db)
 	contractRepo := repository.NewContractRepository(db)
+	reportingRepo := repository.NewReportingRepository(db)
+
+	// Initialize reporting services
+	reportOutputDir := filepath.Join(os.TempDir(), "testmesh", "reports")
+	aggregator := reporting.NewAggregator(db, reportingRepo, executionRepo, flowRepo, logger)
+	generator := reporting.NewGenerator(db, reportingRepo, executionRepo, flowRepo, logger, reportOutputDir)
+
+	// Start scheduled aggregation
+	if err := aggregator.ScheduleAggregation(); err != nil {
+		logger.Error("Failed to schedule aggregation", zap.Error(err))
+	}
+
+	// Initialize AI services (using environment variables for API keys)
+	aiConfig := ai.ProviderConfig{
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
+		LocalEndpoint:   os.Getenv("LOCAL_LLM_ENDPOINT"),
+	}
+	aiProviders := ai.NewProviderManager(aiConfig, logger)
+	aiGenerator := ai.NewGenerator(db, aiProviders, flowRepo, logger)
+	aiAnalyzer := ai.NewAnalyzer(db, aiProviders, flowRepo, logger)
+	aiSelfHealing := ai.NewSelfHealingEngine(db, aiProviders, flowRepo, executionRepo, logger)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
@@ -36,6 +62,8 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, mockRepo, contractRepo, logger, wsHub)
 	mockHandler := handlers.NewMockHandler(mockRepo, logger)
 	contractHandler := handlers.NewContractHandler(contractRepo, logger)
+	reportingHandler := handlers.NewReportingHandler(reportingRepo, aggregator, generator, logger)
+	aiHandler := handlers.NewAIHandler(db, aiGenerator, aiAnalyzer, aiSelfHealing, aiProviders, logger)
 	wsHandler := websocket.NewHandler(wsHub, logger)
 
 	// Health check
@@ -98,6 +126,44 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 		verifications := v1.Group("/verifications")
 		{
 			verifications.GET("/:id", contractHandler.GetVerification)
+		}
+
+		// Report routes
+		reports := v1.Group("/reports")
+		{
+			reports.POST("/generate", reportingHandler.GenerateReport)
+			reports.GET("", reportingHandler.ListReports)
+			reports.GET("/:id", reportingHandler.GetReport)
+			reports.GET("/:id/download", reportingHandler.DownloadReport)
+			reports.DELETE("/:id", reportingHandler.DeleteReport)
+		}
+
+		// Analytics routes
+		analytics := v1.Group("/analytics")
+		{
+			analytics.GET("/metrics", reportingHandler.GetMetrics)
+			analytics.GET("/flakiness", reportingHandler.GetFlakiness)
+			analytics.GET("/trends", reportingHandler.GetTrends)
+			analytics.GET("/steps", reportingHandler.GetStepPerformance)
+			analytics.POST("/aggregate", reportingHandler.TriggerAggregation)
+		}
+
+		// AI routes
+		aiRoutes := v1.Group("/ai")
+		{
+			aiRoutes.POST("/generate", aiHandler.Generate)
+			aiRoutes.POST("/import/openapi", aiHandler.ImportOpenAPI)
+			aiRoutes.POST("/import/postman", aiHandler.ImportPostman)
+			aiRoutes.POST("/import/pact", aiHandler.ImportPact)
+			aiRoutes.POST("/coverage/analyze", aiHandler.AnalyzeCoverage)
+			aiRoutes.POST("/analyze/:execution_id", aiHandler.AnalyzeFailure)
+			aiRoutes.GET("/suggestions", aiHandler.ListSuggestions)
+			aiRoutes.GET("/suggestions/:id", aiHandler.GetSuggestion)
+			aiRoutes.POST("/suggestions/:id/apply", aiHandler.ApplySuggestion)
+			aiRoutes.POST("/suggestions/:id/accept", aiHandler.AcceptSuggestion)
+			aiRoutes.POST("/suggestions/:id/reject", aiHandler.RejectSuggestion)
+			aiRoutes.GET("/usage", aiHandler.GetUsage)
+			aiRoutes.GET("/providers", aiHandler.GetProviders)
 		}
 	}
 

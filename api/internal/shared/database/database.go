@@ -271,5 +271,216 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_breaking_changes_severity ON contracts.breaking_changes(severity);
 	`)
 
+	// Create daily_metrics table for reporting
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS reporting.daily_metrics (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			date DATE NOT NULL,
+			environment VARCHAR(50) NOT NULL,
+			total_flows INTEGER DEFAULT 0,
+			total_execs INTEGER DEFAULT 0,
+			passed_execs INTEGER DEFAULT 0,
+			failed_execs INTEGER DEFAULT 0,
+			pass_rate DECIMAL(5,2) DEFAULT 0,
+			avg_duration_ms BIGINT DEFAULT 0,
+			p50_duration_ms BIGINT DEFAULT 0,
+			p95_duration_ms BIGINT DEFAULT 0,
+			p99_duration_ms BIGINT DEFAULT 0,
+			total_steps INTEGER DEFAULT 0,
+			passed_steps INTEGER DEFAULT 0,
+			failed_steps INTEGER DEFAULT 0,
+			by_flow_metrics JSONB,
+			by_suite_metrics JSONB,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(date, environment)
+		);
+		CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON reporting.daily_metrics(date);
+		CREATE INDEX IF NOT EXISTS idx_daily_metrics_environment ON reporting.daily_metrics(environment);
+	`)
+
+	// Create flakiness_metrics table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS reporting.flakiness_metrics (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID NOT NULL REFERENCES flows.flows(id),
+			window_start_date DATE NOT NULL,
+			window_end_date DATE NOT NULL,
+			window_days INTEGER NOT NULL,
+			total_execs INTEGER DEFAULT 0,
+			passed_execs INTEGER DEFAULT 0,
+			failed_execs INTEGER DEFAULT 0,
+			transitions INTEGER DEFAULT 0,
+			flakiness_score DECIMAL(5,4) DEFAULT 0,
+			is_flaky BOOLEAN DEFAULT false,
+			failure_patterns TEXT[],
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_flakiness_metrics_flow_id ON reporting.flakiness_metrics(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_flakiness_metrics_is_flaky ON reporting.flakiness_metrics(is_flaky);
+		CREATE INDEX IF NOT EXISTS idx_flakiness_metrics_window ON reporting.flakiness_metrics(window_start_date, window_end_date);
+	`)
+
+	// Create reports table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS reporting.reports (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			format VARCHAR(20) NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			filters JSONB,
+			start_date DATE,
+			end_date DATE,
+			file_path VARCHAR(500),
+			file_size BIGINT DEFAULT 0,
+			generated_at TIMESTAMP WITH TIME ZONE,
+			expires_at TIMESTAMP WITH TIME ZONE,
+			error TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_reports_status ON reporting.reports(status);
+		CREATE INDEX IF NOT EXISTS idx_reports_format ON reporting.reports(format);
+		CREATE INDEX IF NOT EXISTS idx_reports_expires_at ON reporting.reports(expires_at);
+	`)
+
+	// Create step_performance table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS reporting.step_performance (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID NOT NULL REFERENCES flows.flows(id),
+			step_id VARCHAR(255) NOT NULL,
+			step_name VARCHAR(255),
+			action VARCHAR(100) NOT NULL,
+			date DATE NOT NULL,
+			execution_count INTEGER DEFAULT 0,
+			passed_count INTEGER DEFAULT 0,
+			failed_count INTEGER DEFAULT 0,
+			pass_rate DECIMAL(5,2) DEFAULT 0,
+			avg_duration_ms BIGINT DEFAULT 0,
+			min_duration_ms BIGINT DEFAULT 0,
+			max_duration_ms BIGINT DEFAULT 0,
+			p50_duration_ms BIGINT DEFAULT 0,
+			p95_duration_ms BIGINT DEFAULT 0,
+			p99_duration_ms BIGINT DEFAULT 0,
+			common_errors TEXT[],
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_step_performance_flow_id ON reporting.step_performance(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_step_performance_step_id ON reporting.step_performance(step_id);
+		CREATE INDEX IF NOT EXISTS idx_step_performance_date ON reporting.step_performance(date);
+		CREATE INDEX IF NOT EXISTS idx_step_performance_action ON reporting.step_performance(action);
+	`)
+
+	// Create AI generation_history table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai.generation_history (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			provider VARCHAR(50) NOT NULL,
+			model VARCHAR(100) NOT NULL,
+			prompt TEXT NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			generated_yaml TEXT,
+			flow_id UUID REFERENCES flows.flows(id),
+			tokens_used INTEGER DEFAULT 0,
+			latency_ms BIGINT DEFAULT 0,
+			error TEXT,
+			metadata JSONB,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_generation_history_provider ON ai.generation_history(provider);
+		CREATE INDEX IF NOT EXISTS idx_generation_history_status ON ai.generation_history(status);
+		CREATE INDEX IF NOT EXISTS idx_generation_history_flow_id ON ai.generation_history(flow_id);
+	`)
+
+	// Create AI suggestions table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai.suggestions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID NOT NULL REFERENCES flows.flows(id),
+			execution_id UUID REFERENCES executions.executions(id),
+			type VARCHAR(50) NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			title VARCHAR(500) NOT NULL,
+			description TEXT,
+			original_yaml TEXT,
+			suggested_yaml TEXT,
+			diff_patch TEXT,
+			confidence DECIMAL(5,4) DEFAULT 0,
+			reasoning TEXT,
+			applied_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_suggestions_flow_id ON ai.suggestions(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_suggestions_execution_id ON ai.suggestions(execution_id);
+		CREATE INDEX IF NOT EXISTS idx_suggestions_type ON ai.suggestions(type);
+		CREATE INDEX IF NOT EXISTS idx_suggestions_status ON ai.suggestions(status);
+	`)
+
+	// Create AI import_history table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai.import_history (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			source_type VARCHAR(50) NOT NULL,
+			source_name VARCHAR(255) NOT NULL,
+			source_content TEXT,
+			source_url VARCHAR(500),
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			flows_generated INTEGER DEFAULT 0,
+			flow_ids TEXT[],
+			error TEXT,
+			metadata JSONB,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_import_history_source_type ON ai.import_history(source_type);
+		CREATE INDEX IF NOT EXISTS idx_import_history_status ON ai.import_history(status);
+	`)
+
+	// Create AI coverage_analysis table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai.coverage_analysis (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			spec_type VARCHAR(50) NOT NULL,
+			spec_name VARCHAR(255) NOT NULL,
+			spec_content TEXT,
+			spec_url VARCHAR(500),
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			total_endpoints INTEGER DEFAULT 0,
+			covered_endpoints INTEGER DEFAULT 0,
+			coverage_percent DECIMAL(5,2) DEFAULT 0,
+			results JSONB,
+			error TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_coverage_analysis_spec_type ON ai.coverage_analysis(spec_type);
+		CREATE INDEX IF NOT EXISTS idx_coverage_analysis_status ON ai.coverage_analysis(status);
+	`)
+
+	// Create AI usage_stats table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai.usage_stats (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			provider VARCHAR(50) NOT NULL,
+			model VARCHAR(100) NOT NULL,
+			date DATE NOT NULL,
+			total_requests INTEGER DEFAULT 0,
+			total_tokens INTEGER DEFAULT 0,
+			success_count INTEGER DEFAULT 0,
+			failure_count INTEGER DEFAULT 0,
+			avg_latency_ms BIGINT DEFAULT 0,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider, model, date)
+		);
+		CREATE INDEX IF NOT EXISTS idx_usage_stats_provider ON ai.usage_stats(provider);
+		CREATE INDEX IF NOT EXISTS idx_usage_stats_date ON ai.usage_stats(date);
+	`)
+
 	return nil
 }
