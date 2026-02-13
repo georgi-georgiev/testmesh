@@ -27,7 +27,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings,
+  Globe,
 } from 'lucide-react';
+import { EnvironmentSelector } from '@/components/environments/EnvironmentSelector';
 import { useState } from 'react';
 
 interface NavItem {
@@ -87,6 +89,7 @@ const navigation: NavSection[] = [
   {
     title: 'Settings',
     items: [
+      { title: 'Environments', href: '/environments', icon: Globe },
       { title: 'Workspaces', href: '/workspaces', icon: Building2 },
     ],
   },
@@ -128,6 +131,18 @@ export function Sidebar() {
           </Link>
         )}
       </div>
+
+      {/* Environment Selector */}
+      {!collapsed && (
+        <div className="px-3 py-2 border-b">
+          <EnvironmentSelector className="w-full" />
+        </div>
+      )}
+      {collapsed && (
+        <div className="px-2 py-2 border-b flex justify-center">
+          <EnvironmentSelector compact />
+        </div>
+      )}
 
       {/* Navigation */}
       <ScrollArea className="flex-1 py-2">

@@ -126,6 +126,11 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	collaborationRepo := repository.NewCollaborationRepository(db)
 	collaborationHandler := handlers.NewCollaborationHandler(collaborationRepo, logger)
 
+	// Initialize environment handler
+	envRepo := repository.NewEnvironmentRepository(db)
+	envRepo.EnsureDefaultExists() // Create default environment if none exists
+	envHandler := handlers.NewEnvironmentHandler(envRepo, logger)
+
 	// Health check
 	router.GET("/health", healthHandler.Check)
 
@@ -407,6 +412,21 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 
 			// Activity feed
 			collaboration.GET("/activity", collaborationHandler.ListActivity)
+		}
+
+		// Environment routes
+		environments := v1.Group("/environments")
+		{
+			environments.GET("", envHandler.List)
+			environments.GET("/default", envHandler.GetDefault)
+			environments.POST("", envHandler.Create)
+			environments.POST("/import", envHandler.Import)
+			environments.GET("/:id", envHandler.Get)
+			environments.PUT("/:id", envHandler.Update)
+			environments.DELETE("/:id", envHandler.Delete)
+			environments.POST("/:id/default", envHandler.SetDefault)
+			environments.POST("/:id/duplicate", envHandler.Duplicate)
+			environments.GET("/:id/export", envHandler.Export)
 		}
 	}
 
