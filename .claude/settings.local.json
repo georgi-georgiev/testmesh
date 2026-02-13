@@ -32,7 +32,8 @@
       "Bash(pnpm next build:*)",
       "Bash(pnpm exec tsc:*)",
       "Bash(pnpm exec shadcn@latest add:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep:*)"
     ]
   }
 }

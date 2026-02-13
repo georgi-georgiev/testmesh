@@ -22,7 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Play, Trash2, Edit, ArrowLeft, Clock } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PresenceIndicator, CommentThread, VersionHistory } from '@/components/collaboration';
+import { Play, Trash2, Edit, ArrowLeft, Clock, MessageSquare, FileCode } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function FlowDetailPage({
@@ -98,7 +100,10 @@ export default function FlowDetailPage({
 
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold">{flow.name}</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-3xl font-bold">{flow.name}</h1>
+              <PresenceIndicator resourceType="flow" resourceId={id} size="sm" />
+            </div>
             {flow.description && (
               <p className="text-muted-foreground mt-2">{flow.description}</p>
             )}
@@ -113,6 +118,7 @@ export default function FlowDetailPage({
             </div>
           </div>
           <div className="flex gap-2">
+            <VersionHistory flowId={id} />
             <Button onClick={handleRun} disabled={createExecution.isPending}>
               <Play className="w-4 h-4 mr-2" />
               Run Flow
@@ -288,6 +294,26 @@ export default function FlowDetailPage({
                 </TableBody>
               </Table>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Comments Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Discussion
+            </CardTitle>
+            <CardDescription>
+              Collaborate with your team on this flow
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CommentThread
+              flowId={id}
+              currentUserId="current-user"
+              currentUserName="Current User"
+            />
           </CardContent>
         </Card>
       </div>

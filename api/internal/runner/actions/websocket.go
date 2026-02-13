@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -46,8 +47,14 @@ type WebSocketResult struct {
 // Active WebSocket connections (keyed by connection ID)
 var activeConnections = make(map[string]*websocket.Conn)
 
-// Execute runs the WebSocket action
-func (h *WebSocketHandler) Execute(ctx context.Context, config *WebSocketConfig) (*WebSocketResult, error) {
+// Execute runs the WebSocket action (implements Handler interface)
+func (h *WebSocketHandler) Execute(ctx context.Context, rawConfig map[string]interface{}) (models.OutputData, error) {
+	// Parse config from map
+	config, err := h.parseConfig(rawConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse WebSocket config: %w", err)
+	}
+
 	result := &WebSocketResult{
 		Metadata: make(map[string]interface{}),
 	}
@@ -69,25 +76,25 @@ func (h *WebSocketHandler) Execute(ctx context.Context, config *WebSocketConfig)
 	case "connect":
 		err := h.connect(ctx, config, result)
 		if err != nil {
-			return result, err
+			return h.resultToOutputData(result), err
 		}
 
 	case "send":
 		err := h.send(ctx, config, result)
 		if err != nil {
-			return result, err
+			return h.resultToOutputData(result), err
 		}
 
 	case "receive":
 		err := h.receive(ctx, config, result)
 		if err != nil {
-			return result, err
+			return h.resultToOutputData(result), err
 		}
 
 	case "close":
 		err := h.close(config, result)
 		if err != nil {
-			return result, err
+			return h.resultToOutputData(result), err
 		}
 
 	default:
@@ -95,7 +102,45 @@ func (h *WebSocketHandler) Execute(ctx context.Context, config *WebSocketConfig)
 	}
 
 	result.Latency = time.Since(startTime).Milliseconds()
-	return result, nil
+	return h.resultToOutputData(result), nil
+}
+
+// parseConfig converts map to WebSocketConfig
+func (h *WebSocketHandler) parseConfig(rawConfig map[string]interface{}) (*WebSocketConfig, error) {
+	configBytes, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var config WebSocketConfig
+	if err := json.Unmarshal(configBytes, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// resultToOutputData converts WebSocketResult to OutputData
+func (h *WebSocketHandler) resultToOutputData(result *WebSocketResult) models.OutputData {
+	output := models.OutputData{
+		"connected":  result.Connected,
+		"latency_ms": result.Latency,
+	}
+
+	if result.ReceivedMessage != nil {
+		output["received_message"] = result.ReceivedMessage
+	}
+	if result.MessageType != 0 {
+		output["message_type"] = result.MessageType
+	}
+	if result.Error != "" {
+		output["error"] = result.Error
+	}
+	if len(result.Metadata) > 0 {
+		output["metadata"] = result.Metadata
+	}
+
+	return output
 }
 
 // connect establishes a WebSocket connection

@@ -30,11 +30,15 @@ import {
 
 import FlowNodeComponent from './nodes/FlowNode';
 import SectionHeaderNode from './nodes/SectionHeaderNode';
+import ConditionNode from './nodes/ConditionNode';
+import ForEachNode from './nodes/ForEachNode';
 
 // Register custom node types
 const nodeTypes: NodeTypes = {
   flowNode: FlowNodeComponent,
   sectionHeader: SectionHeaderNode,
+  conditionNode: ConditionNode,
+  forEachNode: ForEachNode,
 };
 
 interface FlowCanvasProps {

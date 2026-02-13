@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -169,13 +172,21 @@ func (r *Registry) Load(id string) error {
 	return nil
 }
 
-// loadActionPlugin loads an action plugin
+// loadActionPlugin loads an action plugin using HTTP protocol
 func (r *Registry) loadActionPlugin(plugin *Plugin) error {
-	// For now, this is a placeholder
-	// In a full implementation, this would:
-	// 1. Load a Go plugin (.so file)
-	// 2. Or start a subprocess for non-Go plugins
-	// 3. Or connect to a plugin via RPC
+	// Create HTTP plugin runner
+	runner := NewHTTPPluginRunner(plugin.Manifest, plugin.Path, r.logger)
+
+	// Start the plugin process
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	if err := runner.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start plugin: %w", err)
+	}
+
+	// Register the action
+	r.actions[plugin.Manifest.ID] = runner
 
 	r.logger.Info("Loaded action plugin",
 		zap.String("id", plugin.Manifest.ID),
@@ -287,16 +298,153 @@ func (r *Registry) RegisterAction(name string, plugin ActionPlugin) {
 	r.logger.Info("Registered action plugin", zap.String("name", name))
 }
 
-// Install installs a plugin from a source (URL, path, etc.)
+// Install installs a plugin from a source (URL or local path)
 func (r *Registry) Install(source string) (*Plugin, error) {
-	// This would:
-	// 1. Download from URL or copy from path
-	// 2. Verify signature/checksum
-	// 3. Extract to plugin directory
-	// 4. Load manifest
-	// 5. Run any setup
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	return nil, fmt.Errorf("plugin installation not yet implemented")
+	// Determine if source is a URL or local path
+	parsedURL, urlErr := url.Parse(source)
+	isURL := urlErr == nil && (parsedURL.Scheme == "http" || parsedURL.Scheme == "https")
+
+	var sourcePath string
+
+	if isURL {
+		// Download from URL to temp directory
+		tempDir, err := os.MkdirTemp("", "testmesh-plugin-*")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		// For now, we only support direct paths, not URLs
+		// URL support would require downloading and extracting archives
+		return nil, fmt.Errorf("URL installation not yet supported, use local path")
+	} else {
+		// Local path
+		sourcePath = source
+	}
+
+	// Verify source exists
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("plugin source not found: %w", err)
+	}
+
+	if !sourceInfo.IsDir() {
+		return nil, fmt.Errorf("plugin source must be a directory")
+	}
+
+	// Load and validate manifest
+	manifestPath := filepath.Join(sourcePath, "manifest.json")
+	manifest, err := r.loadManifest(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load manifest: %w", err)
+	}
+
+	// Validate manifest has required fields
+	if manifest.ID == "" {
+		return nil, fmt.Errorf("manifest missing required field: id")
+	}
+	if manifest.Name == "" {
+		return nil, fmt.Errorf("manifest missing required field: name")
+	}
+	if manifest.EntryPoint == "" {
+		return nil, fmt.Errorf("manifest missing required field: entry_point")
+	}
+
+	// Check if plugin already exists
+	if _, exists := r.plugins[manifest.ID]; exists {
+		return nil, fmt.Errorf("plugin already installed: %s", manifest.ID)
+	}
+
+	// Verify entry point exists
+	entryPointPath := filepath.Join(sourcePath, manifest.EntryPoint)
+	if _, err := os.Stat(entryPointPath); err != nil {
+		return nil, fmt.Errorf("entry point not found: %s", manifest.EntryPoint)
+	}
+
+	// Create plugin directory
+	destPath := filepath.Join(r.pluginDir, manifest.ID)
+	if err := os.MkdirAll(destPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create plugin directory: %w", err)
+	}
+
+	// Copy plugin files
+	if err := copyDir(sourcePath, destPath); err != nil {
+		os.RemoveAll(destPath) // Cleanup on failure
+		return nil, fmt.Errorf("failed to copy plugin files: %w", err)
+	}
+
+	// Create plugin record
+	plugin := &Plugin{
+		Manifest: manifest,
+		Path:     destPath,
+		Enabled:  true,
+		Loaded:   false,
+	}
+
+	// Register plugin
+	r.plugins[manifest.ID] = plugin
+
+	r.logger.Info("Installed plugin",
+		zap.String("id", manifest.ID),
+		zap.String("name", manifest.Name),
+		zap.String("version", manifest.Version),
+	)
+
+	return plugin, nil
+}
+
+// copyDir recursively copies a directory
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return err
+			}
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// copyFile copies a single file
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 // Uninstall removes a plugin

@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { getStoredToken, clearStoredAuth } from '@/lib/auth/AuthContext';
 import type {
   Flow,
   Execution,
@@ -26,27 +27,55 @@ const createAxiosInstance = (): AxiosInstance => {
     },
   });
 
-  // Request interceptor
+  // Request interceptor - inject auth token
   instance.interceptors.request.use(
     (config) => {
-      // Add any auth tokens here if needed
-      // const token = localStorage.getItem('token');
-      // if (token) {
-      //   config.headers.Authorization = `Bearer ${token}`;
-      // }
+      const token = getStoredToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
       return config;
     },
     (error) => Promise.reject(error)
   );
 
-  // Response interceptor
+  // Response interceptor - handle auth errors
   instance.interceptors.response.use(
     (response) => response,
-    (error: AxiosError) => {
-      // Handle common errors
-      if (error.response?.status === 401) {
-        // Handle unauthorized - redirect to login, etc.
+    async (error: AxiosError) => {
+      const originalRequest = error.config as any;
+
+      // Handle 401 Unauthorized
+      if (error.response?.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true;
+
+        // Try to refresh the token
+        try {
+          const refreshToken = typeof window !== 'undefined'
+            ? localStorage.getItem('testmesh_refresh_token')
+            : null;
+
+          if (refreshToken) {
+            const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+              refresh_token: refreshToken,
+            });
+
+            const { access_token } = response.data;
+            localStorage.setItem('testmesh_auth_token', access_token);
+
+            // Retry the original request with new token
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+            return instance(originalRequest);
+          }
+        } catch (refreshError) {
+          // Refresh failed - clear auth state and redirect to login
+          clearStoredAuth();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
       }
+
       return Promise.reject(error);
     }
   );

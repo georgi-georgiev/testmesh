@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Calendar,
   ArrowRight,
+  Clock,
 } from 'lucide-react';
 import type { GetFlakinessResponse } from '@/lib/api/types';
 
@@ -101,7 +102,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Quick Navigation Cards */}
-      <div className="grid gap-4 md:grid-cols-3 mt-6 mb-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6 mb-8">
         <Link href="/analytics/trends">
           <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -145,6 +146,23 @@ export default function AnalyticsPage() {
             <CardContent>
               <p className="text-xs text-muted-foreground">
                 Generate and download detailed reports
+              </p>
+              <div className="flex items-center text-sm text-primary mt-2">
+                View Details <ArrowRight className="h-4 w-4 ml-1" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/analytics/steps">
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Step Performance</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Analyze individual step execution times and success rates
               </p>
               <div className="flex items-center text-sm text-primary mt-2">
                 View Details <ArrowRight className="h-4 w-4 ml-1" />

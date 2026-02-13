@@ -1,21 +1,100 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FolderTree, Search, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CollectionTree, CollectionDialog } from '@/components/collections';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { CollectionTree, CollectionDialog, MoveCollectionDialog, AddFlowDialog } from '@/components/collections';
 import {
   useCollectionTree,
   useCreateCollection,
   useUpdateCollection,
   useDeleteCollection,
   useDuplicateCollection,
+  useMoveCollection,
+  useRemoveFlowFromCollection,
+  useAddFlowToCollection,
   useCollection,
 } from '@/lib/hooks/useCollections';
 import type { CollectionTreeNode, CreateCollectionRequest, UpdateCollectionRequest } from '@/lib/api/types';
+
+// Recursive tree filter that preserves parent structure when a child matches
+function filterTree(
+  nodes: CollectionTreeNode[],
+  query: string
+): CollectionTreeNode[] {
+  if (!query.trim()) return nodes;
+
+  const lowerQuery = query.toLowerCase();
+
+  return nodes.reduce<CollectionTreeNode[]>((acc, node) => {
+    // Check if this node matches
+    const nameMatches = node.name.toLowerCase().includes(lowerQuery);
+    const descMatches = node.description?.toLowerCase().includes(lowerQuery);
+    const nodeMatches = nameMatches || descMatches;
+
+    // Recursively filter children
+    const filteredChildren = node.children
+      ? filterTree(node.children, query)
+      : undefined;
+
+    const hasMatchingChildren = filteredChildren && filteredChildren.length > 0;
+
+    // Include node if it matches or has matching descendants
+    if (nodeMatches || hasMatchingChildren) {
+      acc.push({
+        ...node,
+        children: filteredChildren,
+      });
+    }
+
+    return acc;
+  }, []);
+}
+
+// Collect all flow IDs from a collection node
+function collectFlowIds(node: CollectionTreeNode): string[] {
+  const flowIds: string[] = [];
+  if (node.type === 'flow' && node.flow_id) {
+    flowIds.push(node.flow_id);
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      flowIds.push(...collectFlowIds(child));
+    }
+  }
+  return flowIds;
+}
+
+// Find parent collection ID for a flow
+function findParentCollectionId(
+  nodes: CollectionTreeNode[],
+  flowId: string,
+  parentId?: string
+): string | null {
+  for (const node of nodes) {
+    if (node.type === 'flow' && node.flow_id === flowId) {
+      return parentId || null;
+    }
+    if (node.children) {
+      const found = findParentCollectionId(node.children, flowId, node.id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 
 export default function CollectionsPage() {
   const router = useRouter();
@@ -24,6 +103,22 @@ export default function CollectionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [parentIdForCreate, setParentIdForCreate] = useState<string | undefined>();
+
+  // Move dialog state
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moveCollectionId, setMoveCollectionId] = useState<string | null>(null);
+  const [moveCollectionName, setMoveCollectionName] = useState('');
+
+  // Add flow dialog state
+  const [addFlowDialogOpen, setAddFlowDialogOpen] = useState(false);
+  const [addFlowCollectionId, setAddFlowCollectionId] = useState<string | null>(null);
+  const [addFlowCollectionName, setAddFlowCollectionName] = useState('');
+  const [existingFlowIds, setExistingFlowIds] = useState<string[]>([]);
+
+  // Remove flow confirmation state
+  const [removeFlowDialogOpen, setRemoveFlowDialogOpen] = useState(false);
+  const [removeFlowId, setRemoveFlowId] = useState<string | null>(null);
+  const [removeFlowCollectionId, setRemoveFlowCollectionId] = useState<string | null>(null);
 
   // Queries
   const { data: treeData, isLoading } = useCollectionTree();
@@ -34,6 +129,9 @@ export default function CollectionsPage() {
   const updateCollection = useUpdateCollection();
   const deleteCollection = useDeleteCollection();
   const duplicateCollection = useDuplicateCollection();
+  const moveCollection = useMoveCollection();
+  const removeFlowFromCollection = useRemoveFlowFromCollection();
+  const addFlowToCollection = useAddFlowToCollection();
 
   const handleSelect = (node: CollectionTreeNode) => {
     setSelectedNodeId(node.id);
@@ -65,8 +163,32 @@ export default function CollectionsPage() {
   };
 
   const handleMoveCollection = (id: string) => {
-    // TODO: Implement move dialog
-    alert('Move functionality coming soon!');
+    // Find the collection name from tree
+    const findNode = (nodes: CollectionTreeNode[]): CollectionTreeNode | null => {
+      for (const node of nodes) {
+        if (node.id === id) return node;
+        if (node.children) {
+          const found = findNode(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const node = findNode(treeData?.tree || []);
+    if (node) {
+      setMoveCollectionId(id);
+      setMoveCollectionName(node.name);
+      setMoveDialogOpen(true);
+    }
+  };
+
+  const handleMoveSubmit = async (targetParentId: string | null) => {
+    if (!moveCollectionId) return;
+    await moveCollection.mutateAsync({
+      id: moveCollectionId,
+      data: { parent_id: targetParentId },
+    });
   };
 
   const handleRunFlow = (flowId: string) => {
@@ -78,9 +200,41 @@ export default function CollectionsPage() {
   };
 
   const handleDeleteFlow = async (flowId: string) => {
-    // This removes the flow from the collection, not deletes it
-    // TODO: Implement remove from collection
-    alert('Remove from collection functionality coming soon!');
+    // Find the parent collection for this flow
+    const collectionId = findParentCollectionId(treeData?.tree || [], flowId);
+    if (collectionId) {
+      setRemoveFlowId(flowId);
+      setRemoveFlowCollectionId(collectionId);
+      setRemoveFlowDialogOpen(true);
+    }
+  };
+
+  const handleConfirmRemoveFlow = async () => {
+    if (removeFlowId && removeFlowCollectionId) {
+      await removeFlowFromCollection.mutateAsync({
+        collectionId: removeFlowCollectionId,
+        flowId: removeFlowId,
+      });
+      setRemoveFlowDialogOpen(false);
+      setRemoveFlowId(null);
+      setRemoveFlowCollectionId(null);
+    }
+  };
+
+  const handleAddFlow = (collectionId: string, collectionName: string, node: CollectionTreeNode) => {
+    const flowIds = collectFlowIds(node);
+    setAddFlowCollectionId(collectionId);
+    setAddFlowCollectionName(collectionName);
+    setExistingFlowIds(flowIds);
+    setAddFlowDialogOpen(true);
+  };
+
+  const handleAddFlowSubmit = async (flowId: string) => {
+    if (!addFlowCollectionId) return;
+    await addFlowToCollection.mutateAsync({
+      collectionId: addFlowCollectionId,
+      data: { flow_id: flowId },
+    });
   };
 
   const handleDialogSubmit = async (data: CreateCollectionRequest | UpdateCollectionRequest) => {
@@ -92,8 +246,9 @@ export default function CollectionsPage() {
   };
 
   // Filter tree by search query
-  const filteredTree = treeData?.tree || [];
-  // TODO: Implement proper tree filtering
+  const filteredTree = useMemo(() => {
+    return filterTree(treeData?.tree || [], searchQuery);
+  }, [treeData?.tree, searchQuery]);
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -145,10 +300,7 @@ export default function CollectionsPage() {
             tree={filteredTree}
             onEdit={handleEditCollection}
             onDelete={handleDeleteCollection}
-            onAddFlow={() => {
-              // TODO: Implement add flow dialog
-              alert('Add flow functionality coming soon!');
-            }}
+            onAddFlow={handleAddFlow}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -176,6 +328,50 @@ export default function CollectionsPage() {
         onSubmit={handleDialogSubmit}
         isLoading={createCollection.isPending || updateCollection.isPending}
       />
+
+      {/* Move collection dialog */}
+      <MoveCollectionDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        collectionId={moveCollectionId || ''}
+        collectionName={moveCollectionName}
+        tree={treeData?.tree || []}
+        onMove={handleMoveSubmit}
+        isLoading={moveCollection.isPending}
+      />
+
+      {/* Add flow dialog */}
+      <AddFlowDialog
+        open={addFlowDialogOpen}
+        onOpenChange={setAddFlowDialogOpen}
+        collectionId={addFlowCollectionId || ''}
+        collectionName={addFlowCollectionName}
+        existingFlowIds={existingFlowIds}
+        onAddFlow={handleAddFlowSubmit}
+        isLoading={addFlowToCollection.isPending}
+      />
+
+      {/* Remove flow confirmation dialog */}
+      <AlertDialog open={removeFlowDialogOpen} onOpenChange={setRemoveFlowDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Flow from Collection</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this flow from the collection?
+              The flow itself will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRemoveFlow}
+              disabled={removeFlowFromCollection.isPending}
+            >
+              {removeFlowFromCollection.isPending ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -192,7 +388,7 @@ function SelectedNodeDetails({
   tree: CollectionTreeNode[];
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
-  onAddFlow: () => void;
+  onAddFlow: (collectionId: string, collectionName: string, node: CollectionTreeNode) => void;
 }) {
   // Find node in tree
   const findNode = (nodes: CollectionTreeNode[], id: string): CollectionTreeNode | null => {
@@ -257,7 +453,7 @@ function SelectedNodeDetails({
               <Button variant="outline" size="sm" onClick={() => onEdit(node.id)}>
                 Edit
               </Button>
-              <Button variant="outline" size="sm" onClick={onAddFlow}>
+              <Button variant="outline" size="sm" onClick={() => onAddFlow(node.id, node.name, node)}>
                 Add Flow
               </Button>
             </div>

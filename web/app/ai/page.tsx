@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Zap,
   BarChart3,
+  History,
 } from 'lucide-react';
 
 export default function AIPage() {
@@ -190,6 +191,29 @@ export default function AIPage() {
               </p>
               <div className="flex items-center text-sm text-primary">
                 View Suggestions <ArrowRight className="h-4 w-4 ml-1" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/ai/history">
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-gray-500" />
+                History
+              </CardTitle>
+              <CardDescription>
+                Browse AI operation history
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                View past generations, imports, and coverage analyses with full
+                details and regeneration options.
+              </p>
+              <div className="flex items-center text-sm text-primary">
+                View History <ArrowRight className="h-4 w-4 ml-1" />
               </div>
             </CardContent>
           </Card>

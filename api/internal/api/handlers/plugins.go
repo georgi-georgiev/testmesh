@@ -94,6 +94,17 @@ func (h *PluginHandler) Install(c *gin.Context) {
 		return
 	}
 
+	// Auto-load the plugin after installation
+	if err := h.registry.Load(plugin.Manifest.ID); err != nil {
+		h.logger.Warn("Failed to auto-load plugin after install",
+			zap.String("id", plugin.Manifest.ID),
+			zap.Error(err),
+		)
+		// Return the plugin anyway, user can manually enable later
+	}
+
+	// Re-fetch to get updated status
+	plugin, _ = h.registry.Get(plugin.Manifest.ID)
 	c.JSON(http.StatusCreated, plugin)
 }
 

@@ -40,15 +40,41 @@ export interface FlowNodeData {
   status?: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 }
 
+// Condition node data - extends FlowNodeData with branching info
+export interface ConditionNodeData extends FlowNodeData {
+  action: 'condition';
+  // IDs of nodes in the then branch
+  thenBranchIds?: string[];
+  // IDs of nodes in the else branch
+  elseBranchIds?: string[];
+}
+
+// ForEach node data - extends FlowNodeData with loop info
+export interface ForEachNodeData extends FlowNodeData {
+  action: 'for_each';
+  // IDs of nested step nodes
+  nestedStepIds?: string[];
+  // Count of nested steps (for display when collapsed)
+  nestedStepCount?: number;
+  // Whether the container is expanded
+  isExpanded?: boolean;
+}
+
 // Section header node data (for visual grouping)
 export interface SectionHeaderData {
   label: string;
   section: FlowSection;
 }
 
-// Custom node type for React Flow - supports both flow nodes and section headers
-export type FlowNode = Node<FlowNodeData | SectionHeaderData>;
+// Custom node type for React Flow - supports flow nodes, section headers, and special nodes
+export type FlowNode = Node<FlowNodeData | SectionHeaderData | ConditionNodeData | ForEachNodeData>;
 export type FlowEdge = Edge;
+
+// Labeled edge for condition branches
+export interface LabeledEdgeData {
+  label?: string;
+  labelStyle?: React.CSSProperties;
+}
 
 // Editor state
 export interface FlowEditorState {
@@ -85,4 +111,14 @@ export function isFlowNodeData(data: FlowNodeData | SectionHeaderData): data is 
 // Type guard to check if node data is SectionHeaderData
 export function isSectionHeaderData(data: FlowNodeData | SectionHeaderData): data is SectionHeaderData {
   return 'section' in data && !('action' in data);
+}
+
+// Type guard to check if node data is ConditionNodeData
+export function isConditionNodeData(data: FlowNodeData | SectionHeaderData | ConditionNodeData | ForEachNodeData): data is ConditionNodeData {
+  return 'action' in data && data.action === 'condition';
+}
+
+// Type guard to check if node data is ForEachNodeData
+export function isForEachNodeData(data: FlowNodeData | SectionHeaderData | ConditionNodeData | ForEachNodeData): data is ForEachNodeData {
+  return 'action' in data && data.action === 'for_each';
 }

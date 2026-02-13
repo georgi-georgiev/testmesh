@@ -102,6 +102,12 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// Initialize plugin registry
 	pluginDir := filepath.Join(os.TempDir(), "testmesh", "plugins")
 	pluginRegistry := plugins.NewRegistry(pluginDir, logger)
+
+	// Register native Go plugins (no external process needed)
+	pluginRegistry.RegisterAction("kafka", plugins.NewKafkaNativePlugin(logger))
+	pluginRegistry.RegisterAction("postgresql", plugins.NewPostgreSQLNativePlugin(logger))
+
+	// Discover and load external plugins (JS, etc.)
 	pluginRegistry.Discover()
 	pluginRegistry.LoadAll()
 	pluginHandler := handlers.NewPluginHandler(pluginRegistry, logger)

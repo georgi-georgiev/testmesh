@@ -3,6 +3,8 @@ import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/lib/providers/query-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
+import { AuthProvider } from "@/lib/auth/AuthContext";
+import { MainLayout } from "@/components/layout";
 
 const outfit = Outfit({subsets:['latin'],variable:'--font-sans'});
 
@@ -37,7 +39,11 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <MainLayout>{children}</MainLayout>
+            </AuthProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,8 +53,14 @@ type GRPCResult struct {
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// Execute runs the gRPC action
-func (h *GRPCHandler) Execute(ctx context.Context, config *GRPCConfig) (*GRPCResult, error) {
+// Execute runs the gRPC action (implements Handler interface)
+func (h *GRPCHandler) Execute(ctx context.Context, rawConfig map[string]interface{}) (models.OutputData, error) {
+	// Parse config from map
+	config, err := h.parseConfig(rawConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse gRPC config: %w", err)
+	}
+
 	result := &GRPCResult{
 		StatusCode: "OK",
 		Metadata:   make(map[string]interface{}),
@@ -77,7 +84,7 @@ func (h *GRPCHandler) Execute(ctx context.Context, config *GRPCConfig) (*GRPCRes
 	if err != nil {
 		result.StatusCode = "UNAVAILABLE"
 		result.ErrorMessage = err.Error()
-		return result, err
+		return h.resultToOutputData(result), err
 	}
 
 	// Add metadata to context
@@ -94,7 +101,7 @@ func (h *GRPCHandler) Execute(ctx context.Context, config *GRPCConfig) (*GRPCRes
 	if err != nil {
 		result.StatusCode = "INVALID_ARGUMENT"
 		result.ErrorMessage = err.Error()
-		return result, err
+		return h.resultToOutputData(result), err
 	}
 
 	// Use generic unary call with JSON
@@ -104,7 +111,7 @@ func (h *GRPCHandler) Execute(ctx context.Context, config *GRPCConfig) (*GRPCRes
 	if err != nil {
 		result.StatusCode = "INTERNAL"
 		result.ErrorMessage = err.Error()
-		return result, err
+		return h.resultToOutputData(result), err
 	}
 
 	// Parse response
@@ -124,7 +131,42 @@ func (h *GRPCHandler) Execute(ctx context.Context, config *GRPCConfig) (*GRPCRes
 		zap.String("method", fullMethod),
 		zap.Int64("latency_ms", result.Latency))
 
-	return result, nil
+	return h.resultToOutputData(result), nil
+}
+
+// parseConfig converts map to GRPCConfig
+func (h *GRPCHandler) parseConfig(rawConfig map[string]interface{}) (*GRPCConfig, error) {
+	configBytes, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var config GRPCConfig
+	if err := json.Unmarshal(configBytes, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// resultToOutputData converts GRPCResult to OutputData
+func (h *GRPCHandler) resultToOutputData(result *GRPCResult) models.OutputData {
+	output := models.OutputData{
+		"status_code": result.StatusCode,
+		"latency_ms":  result.Latency,
+	}
+
+	if result.Response != nil {
+		output["response"] = result.Response
+	}
+	if result.ErrorMessage != "" {
+		output["error_message"] = result.ErrorMessage
+	}
+	if len(result.Metadata) > 0 {
+		output["metadata"] = result.Metadata
+	}
+
+	return output
 }
 
 // getConnection gets or creates a gRPC connection

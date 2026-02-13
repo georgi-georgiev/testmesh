@@ -3,8 +3,10 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/georgi-georgiev/testmesh/internal/plugins"
 	"github.com/georgi-georgiev/testmesh/internal/runner/actions"
 	"github.com/georgi-georgiev/testmesh/internal/runner/assertions"
 	"github.com/georgi-georgiev/testmesh/internal/runner/contracts"
@@ -17,11 +19,12 @@ import (
 
 // Executor orchestrates flow execution
 type Executor struct {
-	repo         *repository.ExecutionRepository
-	contractRepo *repository.ContractRepository
-	logger       *zap.Logger
-	wsHub        WSHub // WebSocket hub interface
-	mockManager  *mocks.Manager
+	repo           *repository.ExecutionRepository
+	contractRepo   *repository.ContractRepository
+	logger         *zap.Logger
+	wsHub          WSHub // WebSocket hub interface
+	mockManager    *mocks.Manager
+	pluginRegistry *plugins.Registry
 }
 
 // WSHub interface for WebSocket broadcasting
@@ -43,6 +46,70 @@ func NewExecutor(repo *repository.ExecutionRepository, contractRepo *repository.
 		wsHub:        wsHub,
 		mockManager:  mockManager,
 	}
+}
+
+// SetPluginRegistry sets the plugin registry for custom action support
+func (e *Executor) SetPluginRegistry(registry *plugins.Registry) {
+	e.pluginRegistry = registry
+}
+
+// ExecuteWithoutPersistence runs a flow without persisting results to the database.
+// This is optimized for load testing where we don't want DB overhead per request.
+func (e *Executor) ExecuteWithoutPersistence(ctx context.Context, flow *models.Flow, variables map[string]string) error {
+	definition := &flow.Definition
+
+	// Create execution context
+	execCtx := NewContext(variables, definition.Env)
+
+	// Execute setup steps
+	if len(definition.Setup) > 0 {
+		if err := e.executeStepsWithoutPersistence(ctx, definition.Setup, execCtx); err != nil {
+			return fmt.Errorf("setup failed: %w", err)
+		}
+	}
+
+	// Execute main steps
+	if err := e.executeStepsWithoutPersistence(ctx, definition.Steps, execCtx); err != nil {
+		// Run teardown even if main steps fail
+		if len(definition.Teardown) > 0 {
+			e.executeStepsWithoutPersistence(ctx, definition.Teardown, execCtx)
+		}
+		return fmt.Errorf("execution failed: %w", err)
+	}
+
+	// Execute teardown steps
+	if len(definition.Teardown) > 0 {
+		if err := e.executeStepsWithoutPersistence(ctx, definition.Teardown, execCtx); err != nil {
+			return fmt.Errorf("teardown failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// executeStepsWithoutPersistence executes steps without DB writes
+func (e *Executor) executeStepsWithoutPersistence(ctx context.Context, steps []models.Step, execCtx *Context) error {
+	for i, step := range steps {
+		stepID := step.ID
+		if stepID == "" {
+			stepID = fmt.Sprintf("step_%d", i)
+		}
+
+		// Execute the step (skip retry for load testing performance)
+		result, err := e.executeStep(ctx, &step, execCtx)
+		if err != nil {
+			return fmt.Errorf("step %s failed: %w", stepID, err)
+		}
+
+		// Store step output in context for subsequent steps
+		if step.Output != nil {
+			for key, path := range step.Output {
+				value := extractValue(result, path)
+				execCtx.SetStepOutput(stepID, key, value)
+			}
+		}
+	}
+	return nil
 }
 
 // Execute runs a flow definition
@@ -347,9 +414,56 @@ func (e *Executor) getActionHandler(actionType string) (actions.Handler, error) 
 		verifier := contracts.NewVerifier(e.contractRepo, e.logger)
 		differ := contracts.NewDiffer(e.contractRepo, e.logger)
 		return actions.NewContractVerifyHandler(verifier, differ, e.logger), nil
+	case "websocket":
+		return actions.NewWebSocketHandler(e.logger), nil
+	case "grpc":
+		return actions.NewGRPCHandler(e.logger), nil
 	default:
+		// Check plugin registry for custom actions
+		if e.pluginRegistry != nil {
+			// First try exact match (e.g., "kafka")
+			if plugin, ok := e.pluginRegistry.GetAction(actionType); ok {
+				return &PluginActionAdapter{plugin: plugin, action: actionType, logger: e.logger}, nil
+			}
+
+			// Then try prefix match for namespaced actions (e.g., "kafka.produce" -> "kafka")
+			if idx := strings.Index(actionType, "."); idx > 0 {
+				pluginName := actionType[:idx]
+				if plugin, ok := e.pluginRegistry.GetAction(pluginName); ok {
+					return &PluginActionAdapter{plugin: plugin, action: actionType, logger: e.logger}, nil
+				}
+			}
+		}
 		return nil, fmt.Errorf("unknown action type: %s", actionType)
 	}
+}
+
+// PluginActionAdapter wraps a plugin to implement the Handler interface
+type PluginActionAdapter struct {
+	plugin plugins.ActionPlugin
+	action string
+	logger *zap.Logger
+}
+
+// Execute runs the plugin action
+func (a *PluginActionAdapter) Execute(ctx context.Context, config map[string]interface{}) (models.OutputData, error) {
+	// Pass the action type to the plugin so it knows which sub-action to run
+	configWithAction := make(map[string]interface{})
+	for k, v := range config {
+		configWithAction[k] = v
+	}
+	configWithAction["_action"] = a.action
+
+	result, err := a.plugin.Execute(ctx, configWithAction)
+	if err != nil {
+		a.logger.Error("Plugin action failed",
+			zap.String("plugin", a.plugin.Name()),
+			zap.String("action", a.action),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	return result, nil
 }
 
 // extractValue extracts a value from result using JSONPath

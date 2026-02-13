@@ -50,6 +50,7 @@ import {
   usePersonalWorkspace,
   useCreateWorkspace,
   useDeleteWorkspace,
+  useUserRole,
 } from '@/lib/hooks/useWorkspaces';
 import type { Workspace, WorkspaceType, WorkspaceRole } from '@/lib/api/workspaces';
 
@@ -194,10 +195,9 @@ export default function WorkspacesPage() {
               {workspacesData?.workspaces
                 .filter((w) => w.type === 'team')
                 .map((workspace) => (
-                  <WorkspaceCard
+                  <WorkspaceCardWithRole
                     key={workspace.id}
                     workspace={workspace}
-                    role="owner" // TODO: Get actual role
                     onDelete={() => handleDeleteWorkspace(workspace.id)}
                   />
                 ))}
@@ -225,14 +225,38 @@ export default function WorkspacesPage() {
   );
 }
 
+// Wrapper component that fetches the user's role for a workspace
+function WorkspaceCardWithRole({
+  workspace,
+  onDelete,
+}: {
+  workspace: Workspace;
+  onDelete?: () => void;
+}) {
+  const { data: roleData, isLoading } = useUserRole(workspace.id);
+
+  // Default to viewer while loading, or if the API call fails
+  const role = roleData?.role ?? 'viewer';
+
+  return (
+    <WorkspaceCard
+      workspace={workspace}
+      role={role}
+      onDelete={onDelete}
+      isLoadingRole={isLoading}
+    />
+  );
+}
+
 interface WorkspaceCardProps {
   workspace: Workspace;
   role: WorkspaceRole;
   isPersonal?: boolean;
   onDelete?: () => void;
+  isLoadingRole?: boolean;
 }
 
-function WorkspaceCard({ workspace, role, isPersonal, onDelete }: WorkspaceCardProps) {
+function WorkspaceCard({ workspace, role, isPersonal, onDelete, isLoadingRole }: WorkspaceCardProps) {
   return (
     <Card className="group hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
@@ -301,10 +325,16 @@ function WorkspaceCard({ workspace, role, isPersonal, onDelete }: WorkspaceCardP
         <div className="flex items-center justify-between">
           <Badge
             variant="outline"
-            className={cn('flex items-center gap-1', ROLE_COLORS[role])}
+            className={cn('flex items-center gap-1', isLoadingRole ? 'opacity-50' : ROLE_COLORS[role])}
           >
-            {ROLE_ICONS[role]}
-            {role}
+            {isLoadingRole ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <>
+                {ROLE_ICONS[role]}
+                {role}
+              </>
+            )}
           </Badge>
 
           {workspace.members && workspace.members.length > 0 && (

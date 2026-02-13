@@ -12,9 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// FlowExecutor interface for executing flows (allows dependency injection)
+type FlowExecutor interface {
+	ExecuteWithoutPersistence(ctx context.Context, flow *models.Flow, variables map[string]string) error
+}
+
 // LoadTester executes load tests with configurable virtual users
 type LoadTester struct {
-	logger *zap.Logger
+	logger   *zap.Logger
+	executor FlowExecutor
 }
 
 // NewLoadTester creates a new load tester
@@ -22,6 +28,11 @@ func NewLoadTester(logger *zap.Logger) *LoadTester {
 	return &LoadTester{
 		logger: logger,
 	}
+}
+
+// SetExecutor sets the flow executor for real execution
+func (lt *LoadTester) SetExecutor(executor FlowExecutor) {
+	lt.executor = executor
 }
 
 // LoadTestConfig configures a load test
@@ -312,9 +323,8 @@ func (lt *LoadTester) runVirtualUser(ctx context.Context, id int, config *LoadTe
 
 				startTime := time.Now()
 
-				// Simulate HTTP request (placeholder - would integrate with executor)
-				// In a real implementation, this would call the flow executor
-				err := lt.simulateFlowExecution(ctx, flow, config.Variables)
+				// Execute the flow using the configured executor
+				err := lt.executeFlow(ctx, flow, config.Variables)
 
 				duration := time.Since(startTime).Milliseconds()
 				resultFn(duration, err)
@@ -332,15 +342,35 @@ func (lt *LoadTester) runVirtualUser(ctx context.Context, id int, config *LoadTe
 	}
 }
 
-// simulateFlowExecution simulates executing a flow (placeholder)
-func (lt *LoadTester) simulateFlowExecution(ctx context.Context, flow *models.Flow, variables map[string]string) error {
-	// In a real implementation, this would:
-	// 1. Parse the flow definition
-	// 2. Execute each step using the executor
-	// 3. Track metrics per step
+// executeFlow executes a flow using the configured executor
+func (lt *LoadTester) executeFlow(ctx context.Context, flow *models.Flow, variables map[string]string) error {
+	// Use real executor if available
+	if lt.executor != nil {
+		return lt.executor.ExecuteWithoutPersistence(ctx, flow, variables)
+	}
 
-	// For now, simulate with random delay
-	time.Sleep(time.Duration(50+int(time.Now().UnixNano()%100)) * time.Millisecond)
+	// Fallback to simulation if no executor configured
+	return lt.simulateFlowExecution(ctx, flow, variables)
+}
+
+// simulateFlowExecution simulates executing a flow (fallback when no executor)
+func (lt *LoadTester) simulateFlowExecution(ctx context.Context, flow *models.Flow, variables map[string]string) error {
+	// Get step count from flow definition for realistic simulation
+	stepCount := len(flow.Definition.Steps)
+	if stepCount == 0 {
+		stepCount = 1
+	}
+
+	// Random delay per step (30-80ms) to simulate realistic HTTP calls
+	for i := 0; i < stepCount; i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			time.Sleep(time.Duration(30+int(time.Now().UnixNano()%50)) * time.Millisecond)
+		}
+	}
+
 	return nil
 }
 

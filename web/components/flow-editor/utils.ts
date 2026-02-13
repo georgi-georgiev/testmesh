@@ -6,11 +6,13 @@ import type {
   FlowEdge,
   FlowNodeData,
   SectionHeaderData,
+  ConditionNodeData,
+  ForEachNodeData,
   ActionType,
   FlowSection,
   ConversionOptions,
 } from './types';
-import { isFlowNodeData, isSectionHeaderData } from './types';
+import { isFlowNodeData, isSectionHeaderData, isConditionNodeData, isForEachNodeData } from './types';
 
 // Generate a unique ID for nodes
 export function generateNodeId(): string {
@@ -85,6 +87,8 @@ const NODE_WIDTH = 280;
 const NODE_HEIGHT = 80;
 const NODE_VERTICAL_GAP = 100;
 const SECTION_GAP = 150;
+const BRANCH_HORIZONTAL_GAP = 350; // Gap between condition branches
+const CONDITION_NODE_HEIGHT = 140; // Diamond height
 
 // Convert a Step to a FlowNode
 export function stepToNode(
@@ -94,6 +98,56 @@ export function stepToNode(
 ): FlowNode {
   const nodeId = step.id || generateNodeId();
 
+  // Handle condition nodes specially
+  if (step.action === 'condition') {
+    const data: ConditionNodeData = {
+      label: step.name || step.id || 'Condition',
+      stepId: step.id || nodeId,
+      action: 'condition',
+      name: step.name,
+      description: step.description,
+      config: step.config || defaultConfigs.condition || {},
+      assert: step.assert,
+      output: step.output,
+      retry: step.retry,
+      timeout: step.timeout,
+    };
+
+    return {
+      id: nodeId,
+      type: 'conditionNode',
+      position,
+      data,
+    };
+  }
+
+  // Handle for_each nodes specially
+  if (step.action === 'for_each') {
+    const nestedSteps = step.config?.steps || [];
+    const data: ForEachNodeData = {
+      label: step.name || step.id || 'For Each',
+      stepId: step.id || nodeId,
+      action: 'for_each',
+      name: step.name,
+      description: step.description,
+      config: step.config || defaultConfigs.for_each || {},
+      assert: step.assert,
+      output: step.output,
+      retry: step.retry,
+      timeout: step.timeout,
+      nestedStepCount: nestedSteps.length,
+      isExpanded: true,
+    };
+
+    return {
+      id: nodeId,
+      type: 'forEachNode',
+      position,
+      data,
+    };
+  }
+
+  // Regular flow node
   const data: FlowNodeData = {
     label: step.name || step.id || step.action,
     stepId: step.id || nodeId,
@@ -152,6 +206,141 @@ export function createSequentialEdges(nodeIds: string[]): FlowEdge[] {
   return edges;
 }
 
+// Helper to convert steps to nodes recursively, handling branching
+interface ConversionContext {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  currentY: number;
+  baseX: number;
+  section: FlowSection;
+}
+
+function convertStepsToNodes(
+  steps: Step[],
+  ctx: ConversionContext
+): { nodeIds: string[]; endY: number } {
+  const nodeIds: string[] = [];
+  let { currentY } = ctx;
+
+  for (const step of steps) {
+    const position = { x: ctx.baseX, y: currentY };
+
+    if (step.action === 'condition') {
+      // Create condition node
+      const conditionNode = stepToNode(step, position, ctx.section);
+      ctx.nodes.push(conditionNode);
+      nodeIds.push(conditionNode.id);
+
+      const thenSteps = step.config?.then_steps || [];
+      const elseSteps = step.config?.else_steps || [];
+
+      currentY += CONDITION_NODE_HEIGHT + NODE_VERTICAL_GAP;
+
+      // Process then branch (right side)
+      if (thenSteps.length > 0) {
+        const thenCtx: ConversionContext = {
+          ...ctx,
+          currentY,
+          baseX: ctx.baseX + BRANCH_HORIZONTAL_GAP / 2,
+        };
+        const thenResult = convertStepsToNodes(thenSteps, thenCtx);
+
+        // Connect condition to first then node
+        if (thenResult.nodeIds.length > 0) {
+          ctx.edges.push({
+            id: `edge_${conditionNode.id}_then_${thenResult.nodeIds[0]}`,
+            source: conditionNode.id,
+            sourceHandle: 'then',
+            target: thenResult.nodeIds[0],
+            type: 'smoothstep',
+            label: 'true',
+            labelStyle: { fill: '#22c55e', fontWeight: 500, fontSize: 10 },
+            labelBgStyle: { fill: 'transparent' },
+          });
+        }
+
+        currentY = Math.max(currentY, thenResult.endY);
+      }
+
+      // Process else branch (left side)
+      if (elseSteps.length > 0) {
+        const elseCtx: ConversionContext = {
+          ...ctx,
+          currentY: position.y + CONDITION_NODE_HEIGHT + NODE_VERTICAL_GAP,
+          baseX: ctx.baseX - BRANCH_HORIZONTAL_GAP / 2,
+        };
+        const elseResult = convertStepsToNodes(elseSteps, elseCtx);
+
+        // Connect condition to first else node
+        if (elseResult.nodeIds.length > 0) {
+          ctx.edges.push({
+            id: `edge_${conditionNode.id}_else_${elseResult.nodeIds[0]}`,
+            source: conditionNode.id,
+            sourceHandle: 'else',
+            target: elseResult.nodeIds[0],
+            type: 'smoothstep',
+            label: 'false',
+            labelStyle: { fill: '#ef4444', fontWeight: 500, fontSize: 10 },
+            labelBgStyle: { fill: 'transparent' },
+          });
+        }
+
+        currentY = Math.max(currentY, elseResult.endY);
+      }
+
+      currentY += NODE_VERTICAL_GAP;
+
+    } else if (step.action === 'for_each') {
+      // Create for_each container node
+      const forEachNode = stepToNode(step, position, ctx.section);
+      ctx.nodes.push(forEachNode);
+      nodeIds.push(forEachNode.id);
+
+      // Calculate container size based on nested steps
+      const nestedSteps = step.config?.steps || [];
+      const containerHeight = Math.max(120, nestedSteps.length * (NODE_HEIGHT + 40) + 60);
+
+      // Nested steps would be rendered inside the container
+      // For now, we just account for the container height
+      currentY += containerHeight + NODE_VERTICAL_GAP;
+
+    } else {
+      // Regular node
+      const node = stepToNode(step, position, ctx.section);
+      ctx.nodes.push(node);
+      nodeIds.push(node.id);
+      currentY += NODE_HEIGHT + NODE_VERTICAL_GAP;
+    }
+  }
+
+  // Create sequential edges between nodes (excluding branching nodes which handle their own edges)
+  for (let i = 0; i < nodeIds.length - 1; i++) {
+    const sourceNode = ctx.nodes.find(n => n.id === nodeIds[i]);
+    const targetNode = ctx.nodes.find(n => n.id === nodeIds[i + 1]);
+
+    // Skip if source is a condition node (it has its own output handles)
+    if (sourceNode && sourceNode.type === 'conditionNode') {
+      // Connect from the 'next' handle (bottom) to the next node
+      ctx.edges.push({
+        id: `edge_${nodeIds[i]}_next_${nodeIds[i + 1]}`,
+        source: nodeIds[i],
+        sourceHandle: 'next',
+        target: nodeIds[i + 1],
+        type: 'smoothstep',
+      });
+    } else {
+      ctx.edges.push({
+        id: `edge_${nodeIds[i]}_${nodeIds[i + 1]}`,
+        source: nodeIds[i],
+        target: nodeIds[i + 1],
+        type: 'smoothstep',
+      });
+    }
+  }
+
+  return { nodeIds, endY: currentY };
+}
+
 // Convert FlowDefinition to nodes and edges
 export function flowDefinitionToNodesAndEdges(
   definition: FlowDefinition
@@ -187,22 +376,18 @@ export function flowDefinitionToNodesAndEdges(
     });
 
     currentY += 60;
-    const nodeIdsInSection: string[] = [];
 
-    // Convert steps to nodes
-    steps.forEach((step) => {
-      const position = { x: 300, y: currentY };
-      const node = stepToNode(step, position, name);
-      nodes.push(node);
-      nodeIdsInSection.push(node.id);
-      currentY += NODE_HEIGHT + NODE_VERTICAL_GAP;
-    });
+    // Convert steps using the recursive helper
+    const ctx: ConversionContext = {
+      nodes,
+      edges,
+      currentY,
+      baseX: 300,
+      section: name,
+    };
 
-    // Create edges within section
-    const sectionEdges = createSequentialEdges(nodeIdsInSection);
-    edges.push(...sectionEdges);
-
-    currentY += SECTION_GAP - NODE_VERTICAL_GAP;
+    const result = convertStepsToNodes(steps, ctx);
+    currentY = result.endY + SECTION_GAP - NODE_VERTICAL_GAP;
   });
 
   return { nodes, edges };
