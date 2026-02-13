@@ -17,7 +17,7 @@ up: ## Start all services
 	docker-compose up -d
 	@echo "$(GREEN)Services started!$(NC)"
 	@echo "  Web:  http://localhost:3000"
-	@echo "  API:  http://localhost:8080"
+	@echo "  API:  http://localhost:5016"
 	@echo "  DB:   localhost:5432"
 
 down: ## Stop all services

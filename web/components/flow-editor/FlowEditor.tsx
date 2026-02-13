@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -37,10 +38,9 @@ interface FlowEditorProps {
 }
 
 // Simple YAML parser for flow definitions
+// Supports both root-level and `flow:` wrapped structures
 function parseYaml(yaml: string): FlowDefinition | null {
   try {
-    // Basic YAML parsing - in production you'd use a proper YAML library
-    // For now, we'll use a simplified regex-based approach
     const lines = yaml.split('\n');
     const definition: Partial<FlowDefinition> = {
       name: '',
@@ -53,14 +53,27 @@ function parseYaml(yaml: string): FlowDefinition | null {
     let currentSection: 'root' | 'env' | 'setup' | 'steps' | 'teardown' = 'root';
     let currentStep: any = null;
     let currentKey = '';
-    let indent = 0;
+
+    // Detect if YAML uses `flow:` wrapper (indent offset)
+    let baseIndent = 0;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      if (trimmed === 'flow:') {
+        baseIndent = 2; // Properties are nested under flow:
+        break;
+      }
+      // If first non-comment line is not `flow:`, assume root-level
+      break;
+    }
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
+      if (trimmed === 'flow:') continue; // Skip the wrapper line
 
-      // Calculate indent level
-      const lineIndent = line.search(/\S/);
+      // Calculate indent level relative to base
+      const lineIndent = line.search(/\S/) - baseIndent;
 
       // Parse key-value pairs
       const kvMatch = trimmed.match(/^(\w+):\s*(.*)$/);
@@ -68,7 +81,7 @@ function parseYaml(yaml: string): FlowDefinition | null {
         const [, key, value] = kvMatch;
 
         if (lineIndent === 0) {
-          // Root level
+          // Root level (flow properties)
           switch (key) {
             case 'name':
               definition.name = value.replace(/^["']|["']$/g, '');
@@ -193,6 +206,7 @@ export default function FlowEditor({
   // YAML state (for yaml mode)
   const [yaml, setYaml] = useState(initialYaml || '');
   const [yamlError, setYamlError] = useState<string | null>(null);
+  const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
 
   // UI state
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
@@ -213,6 +227,7 @@ export default function FlowEditor({
 
   // Handle mode switch
   const handleModeChange = useCallback((newMode: string) => {
+    setValidationSuccess(null);
     if (newMode === 'yaml') {
       // Visual → YAML: Generate YAML from definition
       setYaml(flowDefinitionToYaml(definition));
@@ -252,7 +267,45 @@ export default function FlowEditor({
     if (!parsed) {
       setYamlError('Invalid YAML syntax');
     }
+    setValidationSuccess(null);
   }, []);
+
+  // Handle validate YAML
+  const handleValidate = useCallback(() => {
+    setYamlError(null);
+    setValidationSuccess(null);
+
+    const parsed = parseYaml(yaml);
+    if (!parsed) {
+      setYamlError('Invalid YAML syntax');
+      return;
+    }
+
+    // Check required fields
+    const errors: string[] = [];
+    if (!parsed.name || parsed.name === 'Untitled Flow') {
+      errors.push('Flow name is required');
+    }
+    if (!parsed.steps || parsed.steps.length === 0) {
+      errors.push('At least one step is required');
+    }
+
+    // Check each step has required fields
+    parsed.steps?.forEach((step, index) => {
+      if (!step.id) {
+        errors.push(`Step ${index + 1}: missing 'id'`);
+      }
+      if (!step.action) {
+        errors.push(`Step ${index + 1} (${step.id || 'unnamed'}): missing 'action'`);
+      }
+    });
+
+    if (errors.length > 0) {
+      setYamlError(`Validation failed:\n• ${errors.join('\n• ')}`);
+    } else {
+      setValidationSuccess(`Valid! Flow "${parsed.name}" with ${parsed.steps?.length || 0} steps`);
+    }
+  }, [yaml]);
 
   // Handle node selection
   const handleNodeSelect = useCallback((node: FlowNode | null) => {
@@ -387,7 +440,7 @@ export default function FlowEditor({
             <Redo className="w-4 h-4" />
           </Button>
 
-          {/* Panel toggles */}
+          {/* Panel toggles (visual mode) */}
           {mode === 'visual' && (
             <>
               <div className="w-px h-6 bg-border mx-2" />
@@ -408,6 +461,22 @@ export default function FlowEditor({
               >
                 Properties
                 <ChevronRight className={cn('w-4 h-4 ml-1 transition-transform', !showProperties && 'rotate-180')} />
+              </Button>
+            </>
+          )}
+
+          {/* Validate button (yaml mode) */}
+          {mode === 'yaml' && (
+            <>
+              <div className="w-px h-6 bg-border mx-2" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleValidate}
+                className="h-8 text-xs"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                Validate
               </Button>
             </>
           )}
@@ -447,7 +516,15 @@ export default function FlowEditor({
       {yamlError && (
         <Alert variant="destructive" className="mx-4 mt-2">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{yamlError}</AlertDescription>
+          <AlertDescription className="whitespace-pre-wrap">{yamlError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Success Alert */}
+      {validationSuccess && !yamlError && (
+        <Alert className="mx-4 mt-2 border-green-500/50 text-green-700 dark:text-green-400">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription>{validationSuccess}</AlertDescription>
         </Alert>
       )}
 

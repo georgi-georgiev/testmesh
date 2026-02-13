@@ -410,7 +410,7 @@ docker-compose down
 ```
 
 **Architecture**: Single Docker image runs in two modes:
-- `testmesh` service: HTTP server (port 8080)
+- `testmesh` service: HTTP server (port 5016)
 - `testmesh-worker` service: Background job processor
 
 ### Kubernetes (Production)
@@ -426,7 +426,7 @@ helm install testmesh testmesh/testmesh \
 kubectl get pods -n testmesh
 
 # Access dashboard
-kubectl port-forward -n testmesh svc/testmesh-server 8080:8080
+kubectl port-forward -n testmesh svc/testmesh-server 5016:5016
 kubectl port-forward -n testmesh svc/testmesh-dashboard 3000:3000
 ```
 

@@ -14,7 +14,7 @@ import type {
 } from './types';
 
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5016';
 
 // Create axios instance with default configuration
 const createAxiosInstance = (): AxiosInstance => {

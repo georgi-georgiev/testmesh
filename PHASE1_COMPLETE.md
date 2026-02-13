@@ -24,18 +24,18 @@ go build -o testmesh-api
 ./testmesh-api
 ```
 
-The server will start on `http://localhost:8080`
+The server will start on `http://localhost:5016`
 
 ### Test the API
 
 **Health Check:**
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:5016/health
 ```
 
 **Create a Flow:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/flows \
+curl -X POST http://localhost:5016/api/v1/flows \
   -H "Content-Type: application/json" \
   -d '{
     "yaml": "name: \"Test Flow\"\ndescription: \"My test\"\nsteps:\n  - action: http_request\n    config:\n      method: GET\n      url: \"https://jsonplaceholder.typicode.com/users/1\""
@@ -44,24 +44,24 @@ curl -X POST http://localhost:8080/api/v1/flows \
 
 **List Flows:**
 ```bash
-curl http://localhost:8080/api/v1/flows | jq
+curl http://localhost:5016/api/v1/flows | jq
 ```
 
 **Execute a Flow:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/executions \
+curl -X POST http://localhost:5016/api/v1/executions \
   -H "Content-Type: application/json" \
   -d '{"flow_id":"<FLOW_ID>","environment":"development"}' | jq
 ```
 
 **Get Execution Details:**
 ```bash
-curl http://localhost:8080/api/v1/executions/<EXECUTION_ID> | jq
+curl http://localhost:5016/api/v1/executions/<EXECUTION_ID> | jq
 ```
 
 **Get Execution Steps:**
 ```bash
-curl http://localhost:8080/api/v1/executions/<EXECUTION_ID>/steps | jq
+curl http://localhost:5016/api/v1/executions/<EXECUTION_ID>/steps | jq
 ```
 
 ## Architecture
@@ -177,7 +177,7 @@ Edit `api/config.yaml`:
 environment: development
 
 server:
-  port: 8080
+  port: 5016
   read_timeout: 15s
   write_timeout: 15s
 

@@ -232,7 +232,7 @@ testmesh run flows/checkout.yaml
 testmesh run flows/checkout.yaml --env staging
 
 # Run with variable overrides
-testmesh run flows/checkout.yaml --var USER_ID=123 --var API_URL=http://localhost:8080
+testmesh run flows/checkout.yaml --var USER_ID=123 --var API_URL=http://localhost:5016
 ```
 
 ### 2. Watch Mode (Live Reload)

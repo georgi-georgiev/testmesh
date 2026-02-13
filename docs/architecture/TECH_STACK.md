@@ -65,7 +65,7 @@ func main() {
         // ... more routes
     }
 
-    r.Run(":8080")
+    r.Run(":5016")
 }
 ```
 
@@ -577,7 +577,7 @@ web/dashboard/app/
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5016/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -673,7 +673,7 @@ export function useWebSocket(url: string) {
 // Usage
 function ExecutionDetails({ executionId }: Props) {
   const { messages } = useWebSocket(
-    `ws://localhost:8080/ws/executions/${executionId}`
+    `ws://localhost:5016/ws/executions/${executionId}`
   );
 
   useEffect(() => {
@@ -974,7 +974,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/api-gateway .
 
-EXPOSE 8080
+EXPOSE 5016
 CMD ["./api-gateway"]
 ```
 
@@ -1001,7 +1001,7 @@ spec:
       - name: api-gateway
         image: testmesh/api-gateway:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 5016
         env:
         - name: DATABASE_URL
           valueFrom:
@@ -1020,13 +1020,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: 5016
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: 8080
+            port: 5016
           initialDelaySeconds: 5
           periodSeconds: 5
 ```

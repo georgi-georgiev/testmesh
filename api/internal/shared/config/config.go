@@ -51,7 +51,7 @@ type LoggerConfig struct {
 // Load loads configuration from environment variables and config files
 func Load() (*Config, error) {
 	viper.SetDefault("environment", "development")
-	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.port", 5016)
 	viper.SetDefault("server.read_timeout", "15s")
 	viper.SetDefault("server.write_timeout", "15s")
 

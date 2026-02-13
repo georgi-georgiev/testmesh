@@ -541,13 +541,13 @@ reporting:
 
 ```bash
 # Start live dashboard server
-testmesh serve --port 8080
+testmesh serve --port 5016
 
 # Run tests with live updates
 testmesh run suite.yaml --live
 ```
 
-**Browser at http://localhost:8080:**
+**Browser at http://localhost:5016:**
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Live Test Execution                          [RUNNING]  │
@@ -682,7 +682,7 @@ Query report data programmatically.
 
 ```bash
 # Get summary
-curl http://localhost:8080/api/reports/latest/summary
+curl http://localhost:5016/api/reports/latest/summary
 
 # Response:
 # {
@@ -694,10 +694,10 @@ curl http://localhost:8080/api/reports/latest/summary
 # }
 
 # Get failures
-curl http://localhost:8080/api/reports/latest/failures
+curl http://localhost:5016/api/reports/latest/failures
 
 # Get trends
-curl http://localhost:8080/api/reports/trends?days=30
+curl http://localhost:5016/api/reports/trends?days=30
 ```
 
 ---

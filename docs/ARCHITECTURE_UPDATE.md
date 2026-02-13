@@ -215,7 +215,7 @@ pnpm build
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL, // http://localhost:8080
+  baseURL: process.env.NEXT_PUBLIC_API_URL, // http://localhost:5016
   headers: {
     'Content-Type': 'application/json',
   },
@@ -244,7 +244,7 @@ Each repository has its own deployment:
 **Backend Deployment**:
 - Docker image: `testmesh/server:latest`
 - Kubernetes with HPA (Horizontal Pod Autoscaler)
-- Exposes API at `:8080`
+- Exposes API at `:5016`
 
 **Frontend Deployment**:
 - Docker image: `testmesh/dashboard:latest`
@@ -272,7 +272,7 @@ services:
 
   server:
     build: ./testmesh-server
-    ports: ["8080:8080"]
+    ports: ["5016:5016"]
     environment:
       DATABASE_URL: postgresql://testmesh:testmesh@postgres:5432/testmesh
       REDIS_URL: redis://redis:6379/0
@@ -286,7 +286,7 @@ services:
     build: ./testmesh-dashboard
     ports: ["3000:3000"]
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_API_URL: http://localhost:5016
 ```
 
 ---

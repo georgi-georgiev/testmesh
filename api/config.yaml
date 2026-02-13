@@ -1,15 +1,15 @@
 environment: development
 
 server:
-  port: 8080
+  port: 5016
   read_timeout: 15s
   write_timeout: 15s
 
 database:
   host: localhost
   port: 5432
-  user: testmesh
-  password: testmesh_dev
+  user: root
+  password: admin
   dbname: testmesh
   sslmode: disable
   max_conns: 25

@@ -275,7 +275,7 @@ pnpm start
 
 ```bash
 # Server
-PORT=8080
+PORT=5016
 ENV=development
 
 # Database
@@ -310,8 +310,8 @@ OPENAI_API_KEY=
 
 ```bash
 # API Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_WS_URL=ws://localhost:8080
+NEXT_PUBLIC_API_URL=http://localhost:5016
+NEXT_PUBLIC_WS_URL=ws://localhost:5016
 
 # Environment
 NEXT_PUBLIC_ENV=development
@@ -407,7 +407,7 @@ services:
       context: ./testmesh-server
       dockerfile: deployments/docker/Dockerfile.server
     ports:
-      - "8080:8080"
+      - "5016:5016"
     environment:
       DATABASE_URL: postgresql://testmesh:testmesh@postgres:5432/testmesh
       REDIS_URL: redis://redis:6379/0
@@ -432,7 +432,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_API_URL: http://localhost:5016
     depends_on:
       - server
 

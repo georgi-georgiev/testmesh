@@ -126,7 +126,7 @@ const DefaultTimeout = 30 * time.Second
 const MaxRetries = 3
 
 // Private constants: camelCase
-const defaultPort = 8080
+const defaultPort = 5016
 const bufferSize = 1024
 ```
 

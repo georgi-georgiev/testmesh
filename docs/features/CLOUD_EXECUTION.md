@@ -113,7 +113,7 @@ spec:
       - name: api
         image: testmesh/api:1.0.0
         ports:
-        - containerPort: 8080
+        - containerPort: 5016
         env:
         - name: DATABASE_URL
           valueFrom:
@@ -134,13 +134,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: 5016
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
-            port: 8080
+            port: 5016
           initialDelaySeconds: 5
           periodSeconds: 5
 
@@ -166,7 +166,7 @@ spec:
         image: testmesh/runner:1.0.0
         env:
         - name: API_GATEWAY_URL
-          value: "http://testmesh-api:8080"
+          value: "http://testmesh-api:5016"
         - name: WORKER_CONCURRENCY
           value: "10"
         - name: MAX_EXECUTION_TIME
@@ -192,8 +192,8 @@ spec:
   selector:
     app: testmesh-api
   ports:
-  - port: 8080
-    targetPort: 8080
+  - port: 5016
+    targetPort: 5016
   type: ClusterIP
 
 ---
@@ -220,7 +220,7 @@ spec:
           service:
             name: testmesh-api
             port:
-              number: 8080
+              number: 5016
 ```
 
 ### Network Policies
@@ -896,7 +896,7 @@ spec:
             - staging
             env:
             - name: TESTMESH_API_URL
-              value: "http://testmesh-api:8080"
+              value: "http://testmesh-api:5016"
             - name: TESTMESH_API_KEY
               valueFrom:
                 secretKeyRef:

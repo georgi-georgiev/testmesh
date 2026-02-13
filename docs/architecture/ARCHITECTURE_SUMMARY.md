@@ -19,7 +19,7 @@
                               │                                     │
                               │  ┌───────────────────────────────┐ │
 External                      │  │    API Domain                 │ │
-Clients                       │  │  - REST API (port 8080)       │ │
+Clients                       │  │  - REST API (port 5016)       │ │
    │                          │  │  - WebSocket (real-time)      │ │
    │                          │  │  - Auth & middleware          │ │
    ▼                          │  └──────────┬────────────────────┘ │
@@ -200,7 +200,7 @@ services:
   testmesh:
     build: ./server
     ports:
-      - "8080:8080"
+      - "5016:5016"
     command: ["server"]
 
   testmesh-worker:

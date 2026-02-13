@@ -79,6 +79,8 @@ func AutoMigrate(db *gorm.DB) error {
 			tags TEXT[],
 			definition JSONB NOT NULL,
 			environment VARCHAR(50) DEFAULT 'default',
+			collection_id UUID,
+			sort_order INTEGER DEFAULT 0,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 			deleted_at TIMESTAMP WITH TIME ZONE
@@ -86,6 +88,13 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_flows_name ON flows.flows(name);
 		CREATE INDEX IF NOT EXISTS idx_flows_suite ON flows.flows(suite);
 		CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows.flows(deleted_at);
+		CREATE INDEX IF NOT EXISTS idx_flows_collection_id ON flows.flows(collection_id);
+	`)
+
+	// Add missing columns to existing flows table (idempotent migration)
+	db.Exec(`
+		ALTER TABLE flows.flows ADD COLUMN IF NOT EXISTS collection_id UUID;
+		ALTER TABLE flows.flows ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
 	`)
 
 	// Create executions table
@@ -480,6 +489,58 @@ func AutoMigrate(db *gorm.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_usage_stats_provider ON ai.usage_stats(provider);
 		CREATE INDEX IF NOT EXISTS idx_usage_stats_date ON ai.usage_stats(date);
+	`)
+
+	// Create schedules table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS schedules (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			flow_id UUID NOT NULL REFERENCES flows.flows(id),
+			cron_expr VARCHAR(100) NOT NULL,
+			timezone VARCHAR(50) DEFAULT 'UTC',
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			environment JSONB DEFAULT '{}',
+			notify_on_failure BOOLEAN DEFAULT false,
+			notify_on_success BOOLEAN DEFAULT false,
+			notify_emails JSONB DEFAULT '[]',
+			max_retries INTEGER DEFAULT 0,
+			retry_delay VARCHAR(20) DEFAULT '1m',
+			allow_overlap BOOLEAN DEFAULT false,
+			next_run_at TIMESTAMP WITH TIME ZONE,
+			last_run_at TIMESTAMP WITH TIME ZONE,
+			last_run_id UUID,
+			last_run_result VARCHAR(20),
+			tags JSONB DEFAULT '[]',
+			created_by UUID,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_schedules_flow_id ON schedules(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules(status);
+		CREATE INDEX IF NOT EXISTS idx_schedules_next_run_at ON schedules(next_run_at);
+	`)
+
+	// Create schedule_runs table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS schedule_runs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			schedule_id UUID NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+			execution_id UUID,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			result VARCHAR(20),
+			error TEXT,
+			retry_count INTEGER DEFAULT 0,
+			scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			started_at TIMESTAMP WITH TIME ZONE,
+			completed_at TIMESTAMP WITH TIME ZONE,
+			duration BIGINT DEFAULT 0,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule_id ON schedule_runs(schedule_id);
+		CREATE INDEX IF NOT EXISTS idx_schedule_runs_status ON schedule_runs(status);
+		CREATE INDEX IF NOT EXISTS idx_schedule_runs_scheduled_at ON schedule_runs(scheduled_at);
 	`)
 
 	return nil

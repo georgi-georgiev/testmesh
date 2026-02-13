@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: testmesh-api
     ports:
-      - "8080:8080"
+      - "5016:5016"
     environment:
       # Database
       DB_HOST: postgres
@@ -56,7 +56,7 @@ services:
       REDIS_PORT: 6379
 
       # Server
-      PORT: 8080
+      PORT: 5016
       ENV: development
       LOG_LEVEL: debug
 
@@ -81,8 +81,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+      NEXT_PUBLIC_API_URL: http://localhost:5016
+      NEXT_PUBLIC_WS_URL: ws://localhost:5016
       NODE_ENV: development
     volumes:
       - ./web:/app

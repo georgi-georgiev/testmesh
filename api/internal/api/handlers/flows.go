@@ -36,9 +36,9 @@ func (h *FlowHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Parse YAML into flow definition
-	var definition models.FlowDefinition
-	if err := yaml.Unmarshal([]byte(req.YAML), &definition); err != nil {
+	// Parse YAML - supports both wrapped (flow:) and unwrapped formats
+	definition, err := parseFlowYAML(req.YAML)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid YAML: " + err.Error()})
 		return
 	}
@@ -124,9 +124,9 @@ func (h *FlowHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// Parse YAML into flow definition
-	var definition models.FlowDefinition
-	if err := yaml.Unmarshal([]byte(req.YAML), &definition); err != nil {
+	// Parse YAML - supports both wrapped (flow:) and unwrapped formats
+	definition, err := parseFlowYAML(req.YAML)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid YAML: " + err.Error()})
 		return
 	}
@@ -162,4 +162,28 @@ func (h *FlowHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNoContent, nil)
+}
+
+// parseFlowYAML parses YAML supporting both wrapped (flow:) and unwrapped formats
+func parseFlowYAML(yamlContent string) (models.FlowDefinition, error) {
+	// First try wrapped format: flow: { name: ..., steps: ... }
+	var wrapped struct {
+		Flow models.FlowDefinition `yaml:"flow"`
+	}
+	if err := yaml.Unmarshal([]byte(yamlContent), &wrapped); err != nil {
+		return models.FlowDefinition{}, err
+	}
+
+	// If wrapped format worked (has name or steps), use it
+	if wrapped.Flow.Name != "" || len(wrapped.Flow.Steps) > 0 {
+		return wrapped.Flow, nil
+	}
+
+	// Otherwise try unwrapped format: name: ..., steps: ...
+	var definition models.FlowDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &definition); err != nil {
+		return models.FlowDefinition{}, err
+	}
+
+	return definition, nil
 }

@@ -240,7 +240,7 @@ mcp:
     - name: "custom-analyzer"
       type: "custom"
       config:
-        url: "http://localhost:8080/mcp"
+        url: "http://localhost:5016/mcp"
         auth:
           type: "bearer"
           token: "${CUSTOM_MCP_TOKEN}"
@@ -284,7 +284,7 @@ mcp:
 ANTHROPIC_API_KEY=sk-ant-xxxxx
 
 # Custom MCP Server
-CUSTOM_MCP_URL=http://localhost:8080/mcp
+CUSTOM_MCP_URL=http://localhost:5016/mcp
 CUSTOM_MCP_TOKEN=xxxxx
 ```
 
@@ -824,7 +824,7 @@ const analyzePerformance: Tool = {
 server.addTool(analyzePerformance);
 
 // Start server
-server.listen(8080);
+server.listen(5016);
 ```
 
 ### Using Custom MCP Server
@@ -836,7 +836,7 @@ mcp:
     - name: "custom-analyzer"
       type: "custom"
       config:
-        url: "http://localhost:8080"
+        url: "http://localhost:5016"
 
 # In flow
 - id: analyze_perf

@@ -12,7 +12,7 @@ TestMesh is built as a **modular monolith** designed for simplicity, maintainabi
                               │                                     │
                               │  ┌───────────────────────────────┐ │
 External                      │  │    API Domain                 │ │
-Clients                       │  │  - REST API (port 8080)       │ │
+Clients                       │  │  - REST API (port 5016)       │ │
    │                          │  │  - WebSocket (real-time)      │ │
    │                          │  │  - Auth & middleware          │ │
    ▼                          │  └──────────┬────────────────────┘ │
@@ -569,7 +569,7 @@ services:
   testmesh:
     build: ./server
     ports:
-      - "8080:8080"
+      - "5016:5016"
     command: ["server"]  # HTTP server mode
     environment:
       - DATABASE_URL=postgresql://testmesh:${DB_PASSWORD}@postgres:5432/testmesh
@@ -599,7 +599,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_API_URL=http://localhost:5016
 
   postgres:
     image: timescale/timescaledb:latest-pg14
@@ -657,7 +657,7 @@ Namespace: testmesh
 │   └── redis (cluster mode, 3 nodes)
 │
 ├── Services:
-│   ├── testmesh-server (LoadBalancer, port 8080)
+│   ├── testmesh-server (LoadBalancer, port 5016)
 │   ├── testmesh-dashboard (LoadBalancer, port 3000)
 │   ├── postgres (ClusterIP)
 │   ├── redis (ClusterIP)

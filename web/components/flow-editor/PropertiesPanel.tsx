@@ -544,9 +544,9 @@ function MockServerStartConfig({
         <Label className="text-xs">Port</Label>
         <Input
           type="number"
-          value={config.port || 8080}
-          onChange={(e) => onChange('port', parseInt(e.target.value) || 8080)}
-          placeholder="8080"
+          value={config.port || 5016}
+          onChange={(e) => onChange('port', parseInt(e.target.value) || 5016)}
+          placeholder="5016"
           className="h-8 text-sm"
         />
       </div>
@@ -643,7 +643,7 @@ function ContractVerifyConfig({
         <Input
           value={config.provider_base_url || ''}
           onChange={(e) => onChange('provider_base_url', e.target.value)}
-          placeholder="http://localhost:8080"
+          placeholder="http://localhost:5016"
           className="h-8 text-sm"
         />
       </div>

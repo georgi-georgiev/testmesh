@@ -10,7 +10,7 @@ env:
   CONSUMER_NAME: web-client
   PROVIDER_NAME: user-api
   CONTRACT_VERSION: 1.0.0
-  PROVIDER_BASE_URL: http://localhost:8080
+  PROVIDER_BASE_URL: http://localhost:5016
 
 steps:
   # Consumer side: Make HTTP requests and generate contract

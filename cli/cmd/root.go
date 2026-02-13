@@ -34,7 +34,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .testmesh.yaml)")
-	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080", "TestMesh API URL")
+	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:5016", "TestMesh API URL")
 }
 
 func initConfig() {

@@ -86,7 +86,7 @@ testmesh run my-flow.yaml --verbose
 
 ```bash
 --config string     # Config file (default: .testmesh.yaml)
---api-url string    # TestMesh API URL (default: http://localhost:8080)
+--api-url string    # TestMesh API URL (default: http://localhost:5016)
 ```
 
 ### Installation

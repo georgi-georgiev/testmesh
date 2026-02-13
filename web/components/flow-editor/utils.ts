@@ -63,7 +63,7 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
   },
   mock_server_start: {
     name: '',
-    port: 8080,
+    port: 5016,
     endpoints: [],
   },
   mock_server_stop: {
@@ -273,35 +273,39 @@ export function nodesAndEdgesToFlowDefinition(
 }
 
 // Convert FlowDefinition to YAML string
+// Uses `flow:` wrapper to match standard format
 export function flowDefinitionToYaml(definition: FlowDefinition): string {
   const lines: string[] = [];
 
-  // Header
-  lines.push(`name: "${definition.name}"`);
+  // Root wrapper
+  lines.push('flow:');
+
+  // Header (indented under flow:)
+  lines.push(`  name: "${definition.name}"`);
   if (definition.description) {
-    lines.push(`description: "${definition.description}"`);
+    lines.push(`  description: "${definition.description}"`);
   }
   if (definition.suite) {
-    lines.push(`suite: "${definition.suite}"`);
+    lines.push(`  suite: "${definition.suite}"`);
   }
   if (definition.tags && definition.tags.length > 0) {
-    lines.push(`tags: [${definition.tags.map((t) => `"${t}"`).join(', ')}]`);
+    lines.push(`  tags: [${definition.tags.map((t) => `"${t}"`).join(', ')}]`);
   }
 
   // Environment variables
   if (definition.env && Object.keys(definition.env).length > 0) {
     lines.push('');
-    lines.push('env:');
+    lines.push('  env:');
     Object.entries(definition.env).forEach(([key, value]) => {
       if (typeof value === 'string') {
-        lines.push(`  ${key}: "${value}"`);
+        lines.push(`    ${key}: "${value}"`);
       } else {
-        lines.push(`  ${key}: ${JSON.stringify(value)}`);
+        lines.push(`    ${key}: ${JSON.stringify(value)}`);
       }
     });
   }
 
-  // Helper to convert steps to YAML
+  // Helper to convert steps to YAML (base indent is now 4 spaces under flow:)
   const stepsToYaml = (steps: Step[], indent: string = '  '): string[] => {
     const stepLines: string[] = [];
 
@@ -376,20 +380,20 @@ export function flowDefinitionToYaml(definition: FlowDefinition): string {
   // Setup steps
   if (definition.setup && definition.setup.length > 0) {
     lines.push('');
-    lines.push('setup:');
-    lines.push(...stepsToYaml(definition.setup));
+    lines.push('  setup:');
+    lines.push(...stepsToYaml(definition.setup, '  '));
   }
 
   // Main steps
   lines.push('');
-  lines.push('steps:');
-  lines.push(...stepsToYaml(definition.steps));
+  lines.push('  steps:');
+  lines.push(...stepsToYaml(definition.steps, '  '));
 
   // Teardown steps
   if (definition.teardown && definition.teardown.length > 0) {
     lines.push('');
-    lines.push('teardown:');
-    lines.push(...stepsToYaml(definition.teardown));
+    lines.push('  teardown:');
+    lines.push(...stepsToYaml(definition.teardown, '  '));
   }
 
   return lines.join('\n');

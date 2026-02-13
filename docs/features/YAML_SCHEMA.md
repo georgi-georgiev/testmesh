@@ -520,7 +520,7 @@ All steps share this common structure:
   action: websocket
   config:
     # Connection
-    url: "ws://localhost:8080/chat"       # Required
+    url: "ws://localhost:5016/chat"       # Required
 
     # Subprotocols
     protocols:                            # Optional
@@ -1018,7 +1018,7 @@ All steps share this common structure:
 - id: start_api_mock
   action: mock_server_start
   config:
-    port: 8080
+    port: 5016
     endpoints:
       - path: /api/users/:id
         method: GET

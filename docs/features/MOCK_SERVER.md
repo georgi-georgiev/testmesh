@@ -38,7 +38,7 @@ flow:
     - id: start_mock_server
       action: mock_server_start
       config:
-        port: 8080
+        port: 5016
         endpoints:
           # Simple GET endpoint
           - path: /api/users/123
@@ -62,7 +62,7 @@ flow:
                 message: "User created"
 
       output:
-        mock_url: "$.base_url"  # http://localhost:8080
+        mock_url: "$.base_url"  # http://localhost:5016
 
   steps:
     # Use the mock server
@@ -87,7 +87,7 @@ For complex mocks, use external configuration:
 # mocks/user-service.yaml
 mock_server:
   name: "User Service Mock"
-  port: 8080
+  port: 5016
 
   endpoints:
     - path: /api/users/:id

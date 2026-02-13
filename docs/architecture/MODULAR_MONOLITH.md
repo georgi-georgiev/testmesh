@@ -508,7 +508,7 @@ services:
   testmesh:
     build: ./server
     ports:
-      - "8080:8080"
+      - "5016:5016"
     environment:
       DATABASE_URL: postgres://postgres:password@postgres:5432/testmesh
       REDIS_URL: redis://redis:6379
@@ -556,7 +556,7 @@ spec:
       - name: server
         image: testmesh/server:1.0.0
         ports:
-        - containerPort: 8080
+        - containerPort: 5016
 
 ---
 apiVersion: apps/v1
@@ -587,7 +587,7 @@ storage := flows.NewRepository(db)
 flow, err := storage.Get(ctx, id)
 
 // After (HTTP):
-client := flowsapi.NewClient("http://storage-service:8080")
+client := flowsapi.NewClient("http://storage-service:5016")
 flow, err := client.GetFlow(ctx, id)
 ```
 
@@ -598,7 +598,7 @@ flow, err := client.GetFlow(ctx, id)
 result, err := runner.Execute(ctx, flow)
 
 // After (HTTP/gRPC):
-client := runnerapi.NewClient("http://runner-service:8080")
+client := runnerapi.NewClient("http://runner-service:5016")
 result, err := client.Execute(ctx, flow)
 ```
 

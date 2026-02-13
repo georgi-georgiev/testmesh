@@ -90,7 +90,7 @@ DB_USER=postgres
 DB_PASS=password
 
 # API
-FARE_API_URL=http://localhost:8080
+FARE_API_URL=http://localhost:5016
 ```
 
 ## Running the Tests

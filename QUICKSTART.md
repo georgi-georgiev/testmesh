@@ -32,12 +32,12 @@ go run main.go
 
 You should see:
 ```
-INFO    Starting TestMesh API server    {"port": 8080, "environment": "development"}
+INFO    Starting TestMesh API server    {"port": 5016, "environment": "development"}
 ```
 
 Verify it's running:
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:5016/health
 # Should return: {"status":"ok"}
 ```
 
@@ -111,9 +111,9 @@ steps:
 
 **Symptom:** Console shows "WebSocket connection error"
 
-**Solution:** Make sure the API server is running on port 8080:
+**Solution:** Make sure the API server is running on port 5016:
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:5016/health
 ```
 
 If not running, start it:
@@ -151,8 +151,8 @@ GRANT ALL PRIVILEGES ON DATABASE testmesh TO testmesh;
 
 **Solution:** Kill the process using the port:
 ```bash
-# For API (port 8080)
-lsof -ti:8080 | xargs kill -9
+# For API (port 5016)
+lsof -ti:5016 | xargs kill -9
 
 # For Web (port 3000)
 lsof -ti:3000 | xargs kill -9
@@ -180,7 +180,7 @@ lsof -ti:3000 | xargs kill -9
 
 ## API Endpoints
 
-All endpoints are available at `http://localhost:8080`:
+All endpoints are available at `http://localhost:5016`:
 
 **REST:**
 - `GET /health` - Health check
