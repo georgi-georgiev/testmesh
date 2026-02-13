@@ -69,6 +69,44 @@ func AutoMigrate(db *gorm.DB) error {
 	// We'll do this manually here to avoid circular dependencies
 	// In production, you might want to use a proper migration tool like golang-migrate
 
+	// Create environments table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flows.environments (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			color VARCHAR(20),
+			is_default BOOLEAN DEFAULT false,
+			variables JSONB DEFAULT '[]',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_environments_name ON flows.environments(name);
+		CREATE INDEX IF NOT EXISTS idx_environments_deleted_at ON flows.environments(deleted_at);
+	`)
+
+	// Create collections table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flows.collections (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			icon VARCHAR(100),
+			color VARCHAR(20),
+			parent_id UUID REFERENCES flows.collections(id),
+			sort_order INTEGER DEFAULT 0,
+			variables JSONB DEFAULT '{}',
+			auth JSONB DEFAULT '{}',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_collections_name ON flows.collections(name);
+		CREATE INDEX IF NOT EXISTS idx_collections_parent_id ON flows.collections(parent_id);
+		CREATE INDEX IF NOT EXISTS idx_collections_deleted_at ON flows.collections(deleted_at);
+	`)
+
 	// Create flows table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS flows.flows (
@@ -541,6 +579,44 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule_id ON schedule_runs(schedule_id);
 		CREATE INDEX IF NOT EXISTS idx_schedule_runs_status ON schedule_runs(status);
 		CREATE INDEX IF NOT EXISTS idx_schedule_runs_scheduled_at ON schedule_runs(scheduled_at);
+	`)
+
+	// Create request_history table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flows.request_history (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID REFERENCES flows.flows(id),
+			collection_id UUID REFERENCES flows.collections(id),
+			method VARCHAR(10) NOT NULL,
+			url VARCHAR(2048) NOT NULL,
+			request JSONB NOT NULL,
+			response JSONB,
+			status_code INTEGER,
+			duration_ms BIGINT,
+			size_bytes BIGINT,
+			error TEXT,
+			tags TEXT[],
+			saved_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_request_history_flow_id ON flows.request_history(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_request_history_collection_id ON flows.request_history(collection_id);
+		CREATE INDEX IF NOT EXISTS idx_request_history_url ON flows.request_history(url);
+		CREATE INDEX IF NOT EXISTS idx_request_history_created_at ON flows.request_history(created_at);
+	`)
+
+	// Add collection_items table for organizing flows within collections
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flows.collection_items (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			collection_id UUID NOT NULL REFERENCES flows.collections(id) ON DELETE CASCADE,
+			flow_id UUID NOT NULL REFERENCES flows.flows(id) ON DELETE CASCADE,
+			sort_order INTEGER DEFAULT 0,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(collection_id, flow_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_collection_items_collection_id ON flows.collection_items(collection_id);
+		CREATE INDEX IF NOT EXISTS idx_collection_items_flow_id ON flows.collection_items(flow_id);
 	`)
 
 	return nil

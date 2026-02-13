@@ -1,0 +1,1615 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"github.com/georgi-georgiev/testmesh/internal/shared/config"
+	"github.com/georgi-georgiev/testmesh/internal/storage/models"
+)
+
+// Seed data holders for relationships
+var (
+	environments   []models.Environment
+	collections    []models.Collection
+	flows          []models.Flow
+	executions     []models.Execution
+	mockServers    []models.MockServer
+	contracts      []models.Contract
+	schedules      []models.Schedule
+)
+
+func main() {
+	rand.Seed(time.Now().UnixNano())
+
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Connect to database
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
+		cfg.Database.Host,
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.DBName,
+		cfg.Database.Port,
+		cfg.Database.SSLMode,
+	)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	log.Println("🌱 Starting database seeding...")
+
+	// Clear existing data (in reverse dependency order)
+	clearData(db)
+
+	// Phase 1: Foundation
+	seedEnvironments(db)
+	seedCollections(db)
+
+	// Phase 2: Core Entities
+	seedFlows(db)
+
+	// Phase 3: Execution Data
+	seedExecutions(db)
+
+	// Phase 4: Mock System
+	seedMockServers(db)
+
+	// Phase 5: Contract Testing
+	seedContracts(db)
+
+	// Phase 6: Reporting
+	seedReporting(db)
+
+	// Phase 7: AI Features
+	seedAIFeatures(db)
+
+	// Phase 8: Scheduling
+	seedSchedules(db)
+
+	// Phase 9: History
+	seedRequestHistory(db)
+
+	log.Println("✅ Database seeding completed successfully!")
+	printSummary()
+}
+
+func clearData(db *gorm.DB) {
+	log.Println("🗑️  Clearing existing data...")
+
+	// Delete in reverse dependency order
+	tables := []string{
+		"flows.request_history",
+		"schedule_runs",
+		"schedules",
+		"ai.usage_stats",
+		"ai.coverage_analysis",
+		"ai.import_history",
+		"ai.suggestions",
+		"ai.generation_history",
+		"reporting.step_performance",
+		"reporting.reports",
+		"reporting.flakiness_metrics",
+		"reporting.daily_metrics",
+		"contracts.breaking_changes",
+		"contracts.verifications",
+		"contracts.interactions",
+		"contracts.contracts",
+		"mocks.mock_state",
+		"mocks.mock_requests",
+		"mocks.mock_endpoints",
+		"mocks.mock_servers",
+		"executions.execution_steps",
+		"executions.executions",
+		"flows.flows",
+		"flows.collection_items",
+		"flows.collections",
+		"flows.environments",
+	}
+
+	for _, table := range tables {
+		db.Exec(fmt.Sprintf("DELETE FROM %s", table))
+	}
+}
+
+// ============================================================================
+// PHASE 1: Foundation
+// ============================================================================
+
+func seedEnvironments(db *gorm.DB) {
+	log.Println("📦 Seeding environments...")
+
+	envData := []struct {
+		name      string
+		color     string
+		isDefault bool
+		variables []models.EnvironmentVariable
+	}{
+		{
+			name:      "Development",
+			color:     "#10B981",
+			isDefault: true,
+			variables: []models.EnvironmentVariable{
+				{Key: "BASE_URL", Value: "http://localhost:3000", Description: "API base URL", IsSecret: false, Enabled: true},
+				{Key: "API_KEY", Value: "dev-api-key-12345", Description: "Development API key", IsSecret: true, Enabled: true},
+				{Key: "DB_HOST", Value: "localhost", Description: "Database host", IsSecret: false, Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
+				{Key: "TIMEOUT", Value: "30000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
+				{Key: "DEBUG", Value: "true", Description: "Debug mode", IsSecret: false, Enabled: true},
+				{Key: "LOG_LEVEL", Value: "debug", Description: "Logging level", IsSecret: false, Enabled: true},
+				{Key: "CACHE_TTL", Value: "60", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
+			},
+		},
+		{
+			name:      "Staging",
+			color:     "#F59E0B",
+			isDefault: false,
+			variables: []models.EnvironmentVariable{
+				{Key: "BASE_URL", Value: "https://staging-api.testmesh.io", Description: "Staging API URL", IsSecret: false, Enabled: true},
+				{Key: "API_KEY", Value: "stg-api-key-67890", Description: "Staging API key", IsSecret: true, Enabled: true},
+				{Key: "DB_HOST", Value: "staging-db.testmesh.io", Description: "Database host", IsSecret: false, Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
+				{Key: "TIMEOUT", Value: "15000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
+				{Key: "DEBUG", Value: "false", Description: "Debug mode", IsSecret: false, Enabled: true},
+				{Key: "LOG_LEVEL", Value: "info", Description: "Logging level", IsSecret: false, Enabled: true},
+				{Key: "CACHE_TTL", Value: "300", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
+				{Key: "FEATURE_FLAGS", Value: "beta,experimental", Description: "Enabled feature flags", IsSecret: false, Enabled: true},
+				{Key: "SENTRY_DSN", Value: "https://staging@sentry.io/123", Description: "Sentry DSN", IsSecret: true, Enabled: true},
+			},
+		},
+		{
+			name:      "Production",
+			color:     "#EF4444",
+			isDefault: false,
+			variables: []models.EnvironmentVariable{
+				{Key: "BASE_URL", Value: "https://api.testmesh.io", Description: "Production API URL", IsSecret: false, Enabled: true},
+				{Key: "API_KEY", Value: "prod-api-key-secret", Description: "Production API key", IsSecret: true, Enabled: true},
+				{Key: "DB_HOST", Value: "prod-db.testmesh.io", Description: "Database host", IsSecret: false, Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
+				{Key: "TIMEOUT", Value: "10000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
+				{Key: "DEBUG", Value: "false", Description: "Debug mode", IsSecret: false, Enabled: true},
+				{Key: "LOG_LEVEL", Value: "warn", Description: "Logging level", IsSecret: false, Enabled: true},
+				{Key: "CACHE_TTL", Value: "600", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
+				{Key: "RATE_LIMIT", Value: "1000", Description: "Rate limit per minute", IsSecret: false, Enabled: true},
+				{Key: "SENTRY_DSN", Value: "https://prod@sentry.io/456", Description: "Sentry DSN", IsSecret: true, Enabled: true},
+			},
+		},
+		{
+			name:      "CI/CD",
+			color:     "#8B5CF6",
+			isDefault: false,
+			variables: []models.EnvironmentVariable{
+				{Key: "BASE_URL", Value: "http://localhost:5016", Description: "CI API URL", IsSecret: false, Enabled: true},
+				{Key: "API_KEY", Value: "ci-api-key-test", Description: "CI API key", IsSecret: true, Enabled: true},
+				{Key: "TIMEOUT", Value: "60000", Description: "CI timeout (ms)", IsSecret: false, Enabled: true},
+				{Key: "PARALLEL_WORKERS", Value: "4", Description: "Parallel test workers", IsSecret: false, Enabled: true},
+				{Key: "RETRY_COUNT", Value: "2", Description: "Retry failed tests", IsSecret: false, Enabled: true},
+				{Key: "HEADLESS", Value: "true", Description: "Run in headless mode", IsSecret: false, Enabled: true},
+			},
+		},
+	}
+
+	for _, e := range envData {
+		env := models.Environment{
+			ID:          uuid.New(),
+			Name:        e.name,
+			Description: fmt.Sprintf("%s environment configuration", e.name),
+			Color:       e.color,
+			IsDefault:   e.isDefault,
+			Variables:   e.variables,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		if err := db.Create(&env).Error; err != nil {
+			log.Printf("Failed to create environment %s: %v", e.name, err)
+		} else {
+			environments = append(environments, env)
+		}
+	}
+	log.Printf("  Created %d environments", len(environments))
+}
+
+func seedCollections(db *gorm.DB) {
+	log.Println("📁 Seeding collections...")
+
+	// Root collections
+	rootCollections := []struct {
+		name  string
+		icon  string
+		color string
+		desc  string
+	}{
+		{"User API Tests", "users", "#3B82F6", "User management and authentication API tests"},
+		{"Payment Gateway", "credit-card", "#10B981", "Payment processing and transaction tests"},
+		{"Authentication", "lock", "#F59E0B", "OAuth, JWT, and session management tests"},
+		{"E-commerce Flows", "shopping-cart", "#EC4899", "Shopping cart and checkout flow tests"},
+		{"Regression Suite", "refresh-cw", "#8B5CF6", "Full regression test suite"},
+	}
+
+	for i, c := range rootCollections {
+		collection := models.Collection{
+			ID:          uuid.New(),
+			Name:        c.name,
+			Description: c.desc,
+			Icon:        c.icon,
+			Color:       c.color,
+			SortOrder:   i,
+			Variables: models.CollectionVariables{
+				Global: map[string]interface{}{
+					"collection_id": c.name,
+				},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if err := db.Create(&collection).Error; err != nil {
+			log.Printf("Failed to create collection %s: %v", c.name, err)
+		} else {
+			collections = append(collections, collection)
+		}
+	}
+
+	// Nested collections under "User API Tests"
+	if len(collections) > 0 {
+		parentID := collections[0].ID
+		nestedCollections := []struct {
+			name  string
+			icon  string
+			color string
+		}{
+			{"User CRUD", "user-plus", "#60A5FA"},
+			{"Profile Management", "user-check", "#34D399"},
+			{"Permissions", "shield", "#FBBF24"},
+		}
+
+		for i, c := range nestedCollections {
+			collection := models.Collection{
+				ID:          uuid.New(),
+				Name:        c.name,
+				Description: fmt.Sprintf("Nested collection for %s", c.name),
+				Icon:        c.icon,
+				Color:       c.color,
+				ParentID:    &parentID,
+				SortOrder:   i,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}
+			if err := db.Create(&collection).Error; err != nil {
+				log.Printf("Failed to create nested collection %s: %v", c.name, err)
+			} else {
+				collections = append(collections, collection)
+			}
+		}
+	}
+
+	log.Printf("  Created %d collections (5 root + 3 nested)", len(collections))
+}
+
+// ============================================================================
+// PHASE 2: Core Entities
+// ============================================================================
+
+func seedFlows(db *gorm.DB) {
+	log.Println("🔄 Seeding flows...")
+
+	flowData := []struct {
+		name       string
+		suite      string
+		tags       []string
+		steps      int
+		collection int // index into collections array, -1 for none
+	}{
+		{"User Registration Flow", "auth", []string{"smoke", "critical"}, 5, 0},
+		{"Login with OAuth2", "auth", []string{"integration"}, 8, 2},
+		{"Password Reset Journey", "auth", []string{"e2e"}, 6, 2},
+		{"Create Payment Transaction", "payments", []string{"critical", "api"}, 7, 1},
+		{"Refund Processing", "payments", []string{"api"}, 5, 1},
+		{"Product Search API", "e-commerce", []string{"smoke", "api"}, 4, 3},
+		{"Add to Cart E2E", "e-commerce", []string{"e2e", "ui"}, 10, 3},
+		{"Checkout Complete Flow", "e-commerce", []string{"critical", "e2e"}, 12, 3},
+		{"User Profile Update", "users", []string{"api"}, 5, 0},
+		{"API Rate Limiting Test", "regression", []string{"slow"}, 6, 4},
+		{"Database Connection Pool", "regression", []string{"infrastructure"}, 4, 4},
+		{"Kafka Message Producer", "integration", []string{"slow", "infrastructure"}, 8, -1},
+		{"WebSocket Real-time Updates", "integration", []string{"e2e"}, 6, -1},
+		{"GraphQL Query Test", "api", []string{"smoke"}, 5, -1},
+		{"Contract Verification Suite", "contracts", []string{"critical"}, 7, -1},
+	}
+
+	actions := []string{"http", "assert", "extract", "wait", "grpc", "websocket", "graphql"}
+
+	for i, f := range flowData {
+		// Build steps
+		steps := make([]models.Step, f.steps)
+		for j := 0; j < f.steps; j++ {
+			action := actions[j%len(actions)]
+			steps[j] = models.Step{
+				ID:          fmt.Sprintf("step_%d", j+1),
+				Action:      action,
+				Name:        fmt.Sprintf("%s Step %d", f.name, j+1),
+				Description: fmt.Sprintf("Execute %s action for %s", action, f.name),
+				Config:      buildStepConfig(action, j),
+			}
+		}
+
+		definition := models.FlowDefinition{
+			Name:        f.name,
+			Description: fmt.Sprintf("Test flow for %s operations", f.suite),
+			Suite:       f.suite,
+			Tags:        f.tags,
+			Steps:       steps,
+		}
+
+		flow := models.Flow{
+			ID:          uuid.New(),
+			Name:        f.name,
+			Description: fmt.Sprintf("Automated test flow: %s", f.name),
+			Suite:       f.suite,
+			Tags:        f.tags,
+			Definition:  definition,
+			Environment: "default",
+			SortOrder:   i,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+
+		// Assign to collection if specified
+		if f.collection >= 0 && f.collection < len(collections) {
+			flow.CollectionID = &collections[f.collection].ID
+		}
+
+		if err := db.Create(&flow).Error; err != nil {
+			log.Printf("Failed to create flow %s: %v", f.name, err)
+		} else {
+			flows = append(flows, flow)
+		}
+	}
+
+	log.Printf("  Created %d flows", len(flows))
+}
+
+func buildStepConfig(action string, stepNum int) map[string]interface{} {
+	switch action {
+	case "http":
+		return map[string]interface{}{
+			"method": []string{"GET", "POST", "PUT", "DELETE"}[stepNum%4],
+			"url":    "{{BASE_URL}}/api/v1/resource",
+			"headers": map[string]string{
+				"Authorization": "Bearer {{API_KEY}}",
+				"Content-Type":  "application/json",
+			},
+		}
+	case "assert":
+		return map[string]interface{}{
+			"expression": "response.status == 200",
+			"message":    "Expected successful response",
+		}
+	case "extract":
+		return map[string]interface{}{
+			"source": "response.body",
+			"path":   "$.data.id",
+			"target": "extracted_id",
+		}
+	case "wait":
+		return map[string]interface{}{
+			"duration": "1s",
+		}
+	case "grpc":
+		return map[string]interface{}{
+			"service": "UserService",
+			"method":  "GetUser",
+			"message": map[string]interface{}{"id": "{{user_id}}"},
+		}
+	case "websocket":
+		return map[string]interface{}{
+			"url":     "ws://{{BASE_URL}}/ws",
+			"message": `{"type": "subscribe", "channel": "updates"}`,
+		}
+	case "graphql":
+		return map[string]interface{}{
+			"url":   "{{BASE_URL}}/graphql",
+			"query": "query { users { id name email } }",
+		}
+	default:
+		return map[string]interface{}{}
+	}
+}
+
+// ============================================================================
+// PHASE 3: Execution Data
+// ============================================================================
+
+func seedExecutions(db *gorm.DB) {
+	log.Println("🏃 Seeding executions...")
+
+	if len(flows) == 0 {
+		log.Println("  No flows found, skipping executions")
+		return
+	}
+
+	statuses := []models.ExecutionStatus{
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusCompleted,
+		models.ExecutionStatusFailed,
+		models.ExecutionStatusFailed,
+		models.ExecutionStatusRunning,
+	}
+
+	envs := []string{"Development", "Staging", "Production", "CI/CD"}
+
+	// Create 50 executions spread across flows
+	for i := 0; i < 50; i++ {
+		flow := flows[i%len(flows)]
+		status := statuses[i%len(statuses)]
+		env := envs[i%len(envs)]
+
+		startedAt := time.Now().Add(-time.Duration(rand.Intn(720)) * time.Hour) // Last 30 days
+		var finishedAt *time.Time
+		duration := int64(rand.Intn(30000) + 1000) // 1-31 seconds
+
+		totalSteps := len(flow.Definition.Steps)
+		var passedSteps, failedSteps int
+		var errMsg string
+
+		switch status {
+		case models.ExecutionStatusCompleted:
+			finished := startedAt.Add(time.Duration(duration) * time.Millisecond)
+			finishedAt = &finished
+			passedSteps = totalSteps
+			failedSteps = 0
+		case models.ExecutionStatusFailed:
+			finished := startedAt.Add(time.Duration(duration) * time.Millisecond)
+			finishedAt = &finished
+			failedSteps = rand.Intn(totalSteps/2) + 1
+			passedSteps = totalSteps - failedSteps
+			errMsg = getRandomError()
+		case models.ExecutionStatusRunning:
+			passedSteps = rand.Intn(totalSteps)
+			failedSteps = 0
+		}
+
+		exec := models.Execution{
+			ID:          uuid.New(),
+			FlowID:      flow.ID,
+			Status:      status,
+			Environment: env,
+			StartedAt:   &startedAt,
+			FinishedAt:  finishedAt,
+			DurationMs:  duration,
+			TotalSteps:  totalSteps,
+			PassedSteps: passedSteps,
+			FailedSteps: failedSteps,
+			Error:       errMsg,
+			CreatedAt:   startedAt,
+			UpdatedAt:   time.Now(),
+		}
+
+		if err := db.Create(&exec).Error; err != nil {
+			log.Printf("Failed to create execution: %v", err)
+			continue
+		}
+		executions = append(executions, exec)
+
+		// Create execution steps
+		seedExecutionSteps(db, exec, flow)
+	}
+
+	log.Printf("  Created %d executions", len(executions))
+}
+
+func seedExecutionSteps(db *gorm.DB, exec models.Execution, flow models.Flow) {
+	for i, step := range flow.Definition.Steps {
+		var stepStatus models.StepStatus
+		var errMsg string
+
+		// Determine step status based on execution status and position
+		switch exec.Status {
+		case models.ExecutionStatusCompleted:
+			stepStatus = models.StepStatusCompleted
+		case models.ExecutionStatusFailed:
+			if i < exec.PassedSteps {
+				stepStatus = models.StepStatusCompleted
+			} else if i == exec.PassedSteps {
+				stepStatus = models.StepStatusFailed
+				errMsg = getRandomError()
+			} else {
+				stepStatus = models.StepStatusSkipped
+			}
+		case models.ExecutionStatusRunning:
+			if i < exec.PassedSteps {
+				stepStatus = models.StepStatusCompleted
+			} else if i == exec.PassedSteps {
+				stepStatus = models.StepStatusRunning
+			} else {
+				stepStatus = models.StepStatusPending
+			}
+		default:
+			stepStatus = models.StepStatusPending
+		}
+
+		stepStarted := exec.StartedAt.Add(time.Duration(i*500) * time.Millisecond)
+		stepDuration := int64(rand.Intn(2000) + 100)
+		stepFinished := stepStarted.Add(time.Duration(stepDuration) * time.Millisecond)
+
+		var finishedPtr *time.Time
+		if stepStatus == models.StepStatusCompleted || stepStatus == models.StepStatusFailed {
+			finishedPtr = &stepFinished
+		}
+
+		execStep := models.ExecutionStep{
+			ID:          uuid.New(),
+			ExecutionID: exec.ID,
+			StepID:      step.ID,
+			StepName:    step.Name,
+			Action:      step.Action,
+			Status:      stepStatus,
+			StartedAt:   &stepStarted,
+			FinishedAt:  finishedPtr,
+			DurationMs:  stepDuration,
+			Output: models.OutputData{
+				"response": map[string]interface{}{
+					"status":     200,
+					"body":       map[string]interface{}{"success": true},
+					"duration":   stepDuration,
+					"step_index": i,
+				},
+			},
+			ErrorMessage: errMsg,
+			Attempt:      1,
+			CreatedAt:    stepStarted,
+			UpdatedAt:    time.Now(),
+		}
+
+		db.Create(&execStep)
+	}
+}
+
+func getRandomError() string {
+	errors := []string{
+		"Connection timeout after 30000ms",
+		"HTTP 500: Internal Server Error",
+		"Assertion failed: expected status 200 but got 404",
+		"JSON parse error: unexpected token at position 0",
+		"Authentication failed: invalid API key",
+		"Rate limit exceeded: 429 Too Many Requests",
+		"Database connection failed: connection refused",
+		"SSL certificate verification failed",
+	}
+	return errors[rand.Intn(len(errors))]
+}
+
+// ============================================================================
+// PHASE 4: Mock System
+// ============================================================================
+
+func seedMockServers(db *gorm.DB) {
+	log.Println("🎭 Seeding mock servers...")
+
+	serverData := []struct {
+		name   string
+		port   int
+		status models.MockServerStatus
+	}{
+		{"User API Mock", 9001, models.MockServerStatusRunning},
+		{"Payment Gateway Mock", 9002, models.MockServerStatusRunning},
+		{"Email Service Mock", 9003, models.MockServerStatusStopped},
+		{"Notification Mock", 9004, models.MockServerStatusRunning},
+		{"Legacy API Mock", 9005, models.MockServerStatusFailed},
+	}
+
+	for _, s := range serverData {
+		startedAt := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+		var stoppedAt *time.Time
+		if s.status == models.MockServerStatusStopped || s.status == models.MockServerStatusFailed {
+			stopped := startedAt.Add(time.Duration(rand.Intn(24)) * time.Hour)
+			stoppedAt = &stopped
+		}
+
+		server := models.MockServer{
+			ID:        uuid.New(),
+			Name:      s.name,
+			Port:      s.port,
+			BaseURL:   fmt.Sprintf("http://localhost:%d", s.port),
+			Status:    s.status,
+			StartedAt: &startedAt,
+			StoppedAt: stoppedAt,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if err := db.Create(&server).Error; err != nil {
+			log.Printf("Failed to create mock server %s: %v", s.name, err)
+			continue
+		}
+		mockServers = append(mockServers, server)
+
+		// Create endpoints for each server
+		seedMockEndpoints(db, server)
+
+		// Create captured requests
+		seedMockRequests(db, server)
+
+		// Create state entries
+		seedMockState(db, server)
+	}
+
+	log.Printf("  Created %d mock servers", len(mockServers))
+}
+
+func seedMockEndpoints(db *gorm.DB, server models.MockServer) {
+	endpoints := []struct {
+		path   string
+		method string
+		status int
+	}{
+		{"/api/users", "GET", 200},
+		{"/api/users/:id", "GET", 200},
+		{"/api/users", "POST", 201},
+		{"/api/users/:id", "PUT", 200},
+		{"/api/users/:id", "DELETE", 204},
+		{"/api/health", "GET", 200},
+		{"/api/login", "POST", 200},
+		{"/api/logout", "POST", 200},
+	}
+
+	numEndpoints := rand.Intn(5) + 3 // 3-8 endpoints per server
+	for i := 0; i < numEndpoints && i < len(endpoints); i++ {
+		e := endpoints[i]
+		endpoint := models.MockEndpoint{
+			ID:           uuid.New(),
+			MockServerID: server.ID,
+			Path:         e.path,
+			Method:       e.method,
+			MatchConfig: models.MatchConfig{
+				PathPattern: e.path,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+			},
+			ResponseConfig: models.ResponseConfig{
+				StatusCode: e.status,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				BodyJSON: map[string]interface{}{
+					"success": true,
+					"mock":    true,
+					"server":  server.Name,
+				},
+			},
+			Priority:  i,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		db.Create(&endpoint)
+	}
+}
+
+func seedMockRequests(db *gorm.DB, server models.MockServer) {
+	methods := []string{"GET", "POST", "PUT", "DELETE"}
+	paths := []string{"/api/users", "/api/users/123", "/api/health", "/api/login"}
+
+	numRequests := rand.Intn(20) + 10 // 10-30 requests
+	for i := 0; i < numRequests; i++ {
+		request := models.MockRequest{
+			ID:           uuid.New(),
+			MockServerID: server.ID,
+			Method:       methods[rand.Intn(len(methods))],
+			Path:         paths[rand.Intn(len(paths))],
+			Headers: map[string]interface{}{
+				"Content-Type":  "application/json",
+				"Authorization": "Bearer mock-token",
+			},
+			QueryParams: map[string]interface{}{
+				"page":  1,
+				"limit": 10,
+			},
+			Body:         `{"test": true}`,
+			Matched:      rand.Float32() > 0.2, // 80% matched
+			ResponseCode: []int{200, 201, 400, 404, 500}[rand.Intn(5)],
+			ReceivedAt:   time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+		}
+		db.Create(&request)
+	}
+}
+
+func seedMockState(db *gorm.DB, server models.MockServer) {
+	states := []struct {
+		key   string
+		value map[string]interface{}
+	}{
+		{"user_count", map[string]interface{}{"value": 42}},
+		{"last_request_time", map[string]interface{}{"value": time.Now().Format(time.RFC3339)}},
+		{"request_count", map[string]interface{}{"value": rand.Intn(1000)}},
+		{"active_sessions", map[string]interface{}{"value": rand.Intn(50)}},
+		{"feature_flags", map[string]interface{}{"beta": true, "experimental": false}},
+	}
+
+	numStates := rand.Intn(3) + 2 // 2-5 state entries
+	for i := 0; i < numStates && i < len(states); i++ {
+		s := states[i]
+		state := models.MockState{
+			ID:           uuid.New(),
+			MockServerID: server.ID,
+			StateKey:     s.key,
+			StateValue:   s.value,
+			UpdatedAt:    time.Now(),
+		}
+		db.Create(&state)
+	}
+}
+
+// ============================================================================
+// PHASE 5: Contract Testing
+// ============================================================================
+
+func seedContracts(db *gorm.DB) {
+	log.Println("📜 Seeding contracts...")
+
+	contractData := []struct {
+		consumer string
+		provider string
+		version  string
+	}{
+		{"web-client", "user-api", "1.0.0"},
+		{"mobile-app", "user-api", "2.0.0"},
+		{"web-client", "payment-api", "1.0.0"},
+		{"checkout-service", "inventory-api", "1.5.0"},
+		{"notification-service", "email-api", "3.0.0"},
+		{"analytics-dashboard", "metrics-api", "2.1.0"},
+	}
+
+	for _, c := range contractData {
+		contract := models.Contract{
+			ID:          uuid.New(),
+			Consumer:    c.consumer,
+			Provider:    c.provider,
+			Version:     c.version,
+			PactVersion: "4.0",
+			ContractData: models.ContractData{
+				Consumer: models.ConsumerInfo{Name: c.consumer},
+				Provider: models.ProviderInfo{Name: c.provider},
+				Metadata: models.Metadata{
+					PactSpecification: models.PactSpecification{Version: "4.0"},
+				},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if err := db.Create(&contract).Error; err != nil {
+			log.Printf("Failed to create contract %s -> %s: %v", c.consumer, c.provider, err)
+			continue
+		}
+		contracts = append(contracts, contract)
+
+		// Create interactions
+		seedInteractions(db, contract)
+
+		// Create verifications
+		seedVerifications(db, contract)
+	}
+
+	// Create breaking changes between some contracts
+	if len(contracts) >= 2 {
+		seedBreakingChanges(db)
+	}
+
+	log.Printf("  Created %d contracts", len(contracts))
+}
+
+func seedInteractions(db *gorm.DB, contract models.Contract) {
+	descriptions := []string{
+		"Get user by ID",
+		"Create new user",
+		"Update user profile",
+		"Delete user account",
+		"List all users",
+		"Authenticate user",
+		"Get user preferences",
+		"Update user settings",
+		"Verify email address",
+		"Reset password",
+	}
+
+	numInteractions := rand.Intn(7) + 3 // 3-10 interactions
+	for i := 0; i < numInteractions && i < len(descriptions); i++ {
+		interaction := models.Interaction{
+			ID:            uuid.New(),
+			ContractID:    contract.ID,
+			Description:   descriptions[i],
+			ProviderState: fmt.Sprintf("a %s exists", contract.Provider),
+			Request: models.HTTPRequest{
+				Method: []string{"GET", "POST", "PUT", "DELETE"}[i%4],
+				Path:   fmt.Sprintf("/api/v1/%s", contract.Provider),
+				Headers: map[string]interface{}{
+					"Content-Type": "application/json",
+				},
+			},
+			Response: models.HTTPResponse{
+				Status: 200,
+				Headers: map[string]interface{}{
+					"Content-Type": "application/json",
+				},
+				Body: map[string]interface{}{
+					"success": true,
+					"data":    map[string]interface{}{},
+				},
+			},
+			InteractionType: "http",
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
+		}
+		db.Create(&interaction)
+	}
+}
+
+func seedVerifications(db *gorm.DB, contract models.Contract) {
+	statuses := []models.VerificationStatus{
+		models.VerificationStatusPassed,
+		models.VerificationStatusPassed,
+		models.VerificationStatusFailed,
+		models.VerificationStatusPending,
+	}
+
+	numVerifications := rand.Intn(2) + 2 // 2-4 verifications
+	for i := 0; i < numVerifications; i++ {
+		status := statuses[i%len(statuses)]
+		verifiedAt := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+
+		totalInteractions := rand.Intn(5) + 3
+		passedInteractions := totalInteractions
+		failedInteractions := 0
+		if status == models.VerificationStatusFailed {
+			failedInteractions = rand.Intn(totalInteractions/2) + 1
+			passedInteractions = totalInteractions - failedInteractions
+		}
+
+		verification := models.Verification{
+			ID:              uuid.New(),
+			ContractID:      contract.ID,
+			ProviderVersion: fmt.Sprintf("1.%d.0", i),
+			Status:          status,
+			VerifiedAt:      verifiedAt,
+			Results: models.VerificationResults{
+				TotalInteractions:  totalInteractions,
+				PassedInteractions: passedInteractions,
+				FailedInteractions: failedInteractions,
+				Summary:            fmt.Sprintf("%d/%d interactions passed", passedInteractions, totalInteractions),
+				Details: []models.InteractionResult{
+					{
+						InteractionID: uuid.New(),
+						Description:   "Test interaction",
+						Passed:        status == models.VerificationStatusPassed,
+					},
+				},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		// Link some verifications to executions
+		if len(executions) > 0 && rand.Float32() > 0.5 {
+			execID := executions[rand.Intn(len(executions))].ID
+			verification.ExecutionID = &execID
+		}
+
+		db.Create(&verification)
+	}
+}
+
+func seedBreakingChanges(db *gorm.DB) {
+	changeTypes := []string{"field_removed", "type_changed", "endpoint_removed"}
+	severities := []models.BreakingChangeSeverity{
+		models.SeverityCritical,
+		models.SeverityMajor,
+		models.SeverityMinor,
+	}
+
+	for i := 0; i < 3 && i+1 < len(contracts); i++ {
+		breakingChange := models.BreakingChange{
+			ID:            uuid.New(),
+			OldContractID: contracts[i].ID,
+			NewContractID: contracts[i+1].ID,
+			ChangeType:    changeTypes[i],
+			Severity:      severities[i],
+			Description:   fmt.Sprintf("Breaking change detected: %s", changeTypes[i]),
+			Details: models.ChangeDetails{
+				Field:      "user.email",
+				OldValue:   "string",
+				NewValue:   "object",
+				Impact:     "Clients expecting string will fail",
+				Suggestion: "Use backwards-compatible migration",
+			},
+			DetectedAt: time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+			CreatedAt:  time.Now(),
+		}
+		db.Create(&breakingChange)
+	}
+}
+
+// ============================================================================
+// PHASE 6: Reporting
+// ============================================================================
+
+func seedReporting(db *gorm.DB) {
+	log.Println("📊 Seeding reporting data...")
+
+	// Daily metrics for last 30 days
+	seedDailyMetrics(db)
+
+	// Flakiness metrics
+	seedFlakinessMetrics(db)
+
+	// Reports
+	seedReports(db)
+
+	// Step performance
+	seedStepPerformance(db)
+}
+
+func seedDailyMetrics(db *gorm.DB) {
+	envs := []string{"Development", "Staging", "Production", "CI/CD"}
+
+	for day := 0; day < 30; day++ {
+		date := time.Now().AddDate(0, 0, -day).Truncate(24 * time.Hour)
+
+		for _, env := range envs {
+			totalExecs := rand.Intn(50) + 10
+			passedExecs := int(float64(totalExecs) * (0.6 + rand.Float64()*0.35))
+			failedExecs := totalExecs - passedExecs
+
+			totalSteps := totalExecs * (rand.Intn(5) + 5)
+			passedSteps := int(float64(totalSteps) * (0.7 + rand.Float64()*0.25))
+			failedSteps := totalSteps - passedSteps
+
+			metric := models.DailyMetric{
+				ID:            uuid.New(),
+				Date:          date,
+				Environment:   env,
+				TotalFlows:    len(flows),
+				TotalExecs:    totalExecs,
+				PassedExecs:   passedExecs,
+				FailedExecs:   failedExecs,
+				PassRate:      float64(passedExecs) / float64(totalExecs) * 100,
+				AvgDurationMs: int64(rand.Intn(10000) + 2000),
+				P50DurationMs: int64(rand.Intn(5000) + 1000),
+				P95DurationMs: int64(rand.Intn(15000) + 5000),
+				P99DurationMs: int64(rand.Intn(20000) + 10000),
+				TotalSteps:    totalSteps,
+				PassedSteps:   passedSteps,
+				FailedSteps:   failedSteps,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+			db.Create(&metric)
+		}
+	}
+	log.Println("  Created 120 daily metrics (30 days × 4 environments)")
+}
+
+func seedFlakinessMetrics(db *gorm.DB) {
+	if len(flows) < 5 {
+		return
+	}
+
+	// Pick 5 flows to be "flaky"
+	for i := 0; i < 5 && i < len(flows); i++ {
+		flow := flows[i]
+		totalExecs := rand.Intn(50) + 20
+		passedExecs := int(float64(totalExecs) * (0.4 + rand.Float64()*0.4))
+		failedExecs := totalExecs - passedExecs
+		transitions := rand.Intn(totalExecs/2) + 5
+
+		flakinessScore := float64(transitions) / float64(totalExecs)
+		if flakinessScore > 1 {
+			flakinessScore = 1
+		}
+
+		metric := models.FlakinessMetric{
+			ID:              uuid.New(),
+			FlowID:          flow.ID,
+			WindowStartDate: time.Now().AddDate(0, 0, -7),
+			WindowEndDate:   time.Now(),
+			WindowDays:      7,
+			TotalExecs:      totalExecs,
+			PassedExecs:     passedExecs,
+			FailedExecs:     failedExecs,
+			Transitions:     transitions,
+			FlakinessScore:  flakinessScore,
+			IsFlaky:         flakinessScore > 0.2,
+			FailurePatterns: []string{"timeout", "connection_reset", "intermittent"},
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
+		}
+		db.Create(&metric)
+	}
+	log.Println("  Created 5 flakiness metrics")
+}
+
+func seedReports(db *gorm.DB) {
+	reports := []struct {
+		name   string
+		format models.ReportFormat
+		status models.ReportStatus
+	}{
+		{"Weekly Test Summary", models.ReportFormatHTML, models.ReportStatusCompleted},
+		{"CI/CD Pipeline Report", models.ReportFormatJSON, models.ReportStatusCompleted},
+		{"JUnit Integration Export", models.ReportFormatJUnit, models.ReportStatusCompleted},
+		{"Monthly Performance Analysis", models.ReportFormatHTML, models.ReportStatusGenerating},
+		{"Flaky Test Investigation", models.ReportFormatJSON, models.ReportStatusPending},
+	}
+
+	for _, r := range reports {
+		generatedAt := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+		var generatedPtr *time.Time
+		if r.status == models.ReportStatusCompleted {
+			generatedPtr = &generatedAt
+		}
+
+		report := models.Report{
+			ID:          uuid.New(),
+			Name:        r.name,
+			Format:      r.format,
+			Status:      r.status,
+			StartDate:   time.Now().AddDate(0, 0, -30),
+			EndDate:     time.Now(),
+			FilePath:    fmt.Sprintf("/reports/%s.%s", r.name, r.format),
+			FileSize:    int64(rand.Intn(1000000) + 10000),
+			GeneratedAt: generatedPtr,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		db.Create(&report)
+	}
+	log.Println("  Created 5 reports")
+}
+
+func seedStepPerformance(db *gorm.DB) {
+	if len(flows) == 0 {
+		return
+	}
+
+	count := 0
+	for _, flow := range flows {
+		for i, step := range flow.Definition.Steps {
+			for day := 0; day < 7; day++ {
+				date := time.Now().AddDate(0, 0, -day).Truncate(24 * time.Hour)
+				execCount := rand.Intn(20) + 5
+				passedCount := int(float64(execCount) * (0.7 + rand.Float64()*0.3))
+				failedCount := execCount - passedCount
+
+				perf := models.StepPerformance{
+					ID:             uuid.New(),
+					FlowID:         flow.ID,
+					StepID:         step.ID,
+					StepName:       step.Name,
+					Action:         step.Action,
+					Date:           date,
+					ExecutionCount: execCount,
+					PassedCount:    passedCount,
+					FailedCount:    failedCount,
+					PassRate:       float64(passedCount) / float64(execCount) * 100,
+					AvgDurationMs:  int64(rand.Intn(2000) + 100),
+					MinDurationMs:  int64(rand.Intn(100) + 10),
+					MaxDurationMs:  int64(rand.Intn(5000) + 1000),
+					P50DurationMs:  int64(rand.Intn(1000) + 100),
+					P95DurationMs:  int64(rand.Intn(3000) + 500),
+					P99DurationMs:  int64(rand.Intn(4000) + 1000),
+					CreatedAt:      time.Now(),
+					UpdatedAt:      time.Now(),
+				}
+				db.Create(&perf)
+				count++
+			}
+
+			// Only create metrics for first 3 steps per flow to avoid too much data
+			if i >= 2 {
+				break
+			}
+		}
+	}
+	log.Printf("  Created %d step performance records", count)
+}
+
+// ============================================================================
+// PHASE 7: AI Features
+// ============================================================================
+
+func seedAIFeatures(db *gorm.DB) {
+	log.Println("🤖 Seeding AI features...")
+
+	seedGenerationHistory(db)
+	seedSuggestions(db)
+	seedImportHistory(db)
+	seedCoverageAnalysis(db)
+	seedAIUsageStats(db)
+}
+
+func seedGenerationHistory(db *gorm.DB) {
+	providers := []models.AIProviderType{
+		models.AIProviderAnthropic,
+		models.AIProviderOpenAI,
+	}
+	models_list := []string{"claude-3-opus", "claude-3-sonnet", "gpt-4", "gpt-4-turbo"}
+	statuses := []models.GenerationStatus{
+		models.GenerationStatusCompleted,
+		models.GenerationStatusCompleted,
+		models.GenerationStatusCompleted,
+		models.GenerationStatusFailed,
+	}
+
+	prompts := []string{
+		"Generate a test flow for user authentication with OAuth2",
+		"Create API tests for payment processing endpoint",
+		"Build regression tests for user profile updates",
+		"Generate E2E test for shopping cart checkout",
+		"Create contract tests for microservice communication",
+		"Build performance tests for database operations",
+		"Generate smoke tests for health endpoints",
+		"Create integration tests for message queue",
+		"Build security tests for API authentication",
+		"Generate load tests for concurrent users",
+	}
+
+	for i := 0; i < 10; i++ {
+		status := statuses[i%len(statuses)]
+		var flowID *uuid.UUID
+		if status == models.GenerationStatusCompleted && len(flows) > 0 {
+			id := flows[i%len(flows)].ID
+			flowID = &id
+		}
+
+		var errMsg string
+		if status == models.GenerationStatusFailed {
+			errMsg = "Rate limit exceeded"
+		}
+
+		history := models.GenerationHistory{
+			ID:         uuid.New(),
+			Provider:   providers[i%len(providers)],
+			Model:      models_list[i%len(models_list)],
+			Prompt:     prompts[i],
+			Status:     status,
+			FlowID:     flowID,
+			TokensUsed: rand.Intn(2000) + 500,
+			LatencyMs:  int64(rand.Intn(5000) + 1000),
+			Error:      errMsg,
+			CreatedAt:  time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+			UpdatedAt:  time.Now(),
+		}
+		db.Create(&history)
+	}
+	log.Println("  Created 10 generation history records")
+}
+
+func seedSuggestions(db *gorm.DB) {
+	if len(flows) == 0 || len(executions) == 0 {
+		return
+	}
+
+	types := []models.SuggestionType{
+		models.SuggestionTypeFix,
+		models.SuggestionTypeOptimization,
+		models.SuggestionTypeRetryStrategy,
+		models.SuggestionTypeAssertion,
+	}
+	statuses := []models.SuggestionStatus{
+		models.SuggestionStatusPending,
+		models.SuggestionStatusAccepted,
+		models.SuggestionStatusRejected,
+		models.SuggestionStatusApplied,
+	}
+
+	titles := []string{
+		"Add retry logic for flaky network calls",
+		"Optimize assertion for faster validation",
+		"Implement exponential backoff",
+		"Add additional status code checks",
+		"Reduce timeout for faster failure detection",
+		"Add request correlation ID",
+		"Implement circuit breaker pattern",
+		"Add response body validation",
+	}
+
+	for i := 0; i < 8; i++ {
+		flow := flows[i%len(flows)]
+		exec := executions[i%len(executions)]
+
+		suggestion := models.Suggestion{
+			ID:          uuid.New(),
+			FlowID:      flow.ID,
+			ExecutionID: &exec.ID,
+			Type:        types[i%len(types)],
+			Status:      statuses[i%len(statuses)],
+			Title:       titles[i],
+			Description: fmt.Sprintf("AI-generated suggestion to improve test reliability: %s", titles[i]),
+			Confidence:  0.7 + rand.Float64()*0.25,
+			Reasoning:   "Based on analysis of recent execution failures and patterns",
+			CreatedAt:   time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+			UpdatedAt:   time.Now(),
+		}
+		db.Create(&suggestion)
+	}
+	log.Println("  Created 8 suggestions")
+}
+
+func seedImportHistory(db *gorm.DB) {
+	sources := []struct {
+		sourceType models.ImportSourceType
+		name       string
+		status     models.ImportStatus
+		flows      int
+	}{
+		{models.ImportSourceOpenAPI, "petstore-api.yaml", models.ImportStatusCompleted, 12},
+		{models.ImportSourcePostman, "user-collection.json", models.ImportStatusCompleted, 8},
+		{models.ImportSourcePact, "consumer-provider.json", models.ImportStatusCompleted, 5},
+		{models.ImportSourceSwagger, "payment-api-v2.json", models.ImportStatusFailed, 0},
+		{models.ImportSourceGraphQL, "schema.graphql", models.ImportStatusProcessing, 0},
+	}
+
+	for _, s := range sources {
+		var errMsg string
+		if s.status == models.ImportStatusFailed {
+			errMsg = "Invalid schema format"
+		}
+
+		history := models.ImportHistory{
+			ID:             uuid.New(),
+			SourceType:     s.sourceType,
+			SourceName:     s.name,
+			Status:         s.status,
+			FlowsGenerated: s.flows,
+			Error:          errMsg,
+			CreatedAt:      time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+			UpdatedAt:      time.Now(),
+		}
+		db.Create(&history)
+	}
+	log.Println("  Created 5 import history records")
+}
+
+func seedCoverageAnalysis(db *gorm.DB) {
+	analyses := []struct {
+		specType string
+		name     string
+		total    int
+		covered  int
+		status   models.CoverageStatus
+	}{
+		{"openapi", "User API Spec", 25, 18, models.CoverageStatusCompleted},
+		{"swagger", "Payment Gateway", 15, 12, models.CoverageStatusCompleted},
+		{"graphql", "E-commerce Schema", 40, 0, models.CoverageStatusAnalyzing},
+	}
+
+	for _, a := range analyses {
+		var coverage float64
+		if a.total > 0 {
+			coverage = float64(a.covered) / float64(a.total) * 100
+		}
+
+		analysis := models.CoverageAnalysis{
+			ID:               uuid.New(),
+			SpecType:         models.ImportSourceType(a.specType),
+			SpecName:         a.name,
+			Status:           a.status,
+			TotalEndpoints:   a.total,
+			CoveredEndpoints: a.covered,
+			CoveragePercent:  coverage,
+			Results: models.CoverageResults{
+				Covered: []models.EndpointCoverage{
+					{Method: "GET", Path: "/api/users", Coverage: 1.0},
+					{Method: "GET", Path: "/api/users/{id}", Coverage: 1.0},
+					{Method: "POST", Path: "/api/auth/login", Coverage: 0.8},
+				},
+				Uncovered: []models.EndpointCoverage{
+					{Method: "GET", Path: "/api/admin", Coverage: 0.0, MissingTests: []string{"admin access test"}},
+					{Method: "GET", Path: "/api/reports", Coverage: 0.0, MissingTests: []string{"report generation test"}},
+				},
+			},
+			CreatedAt: time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+			UpdatedAt: time.Now(),
+		}
+		db.Create(&analysis)
+	}
+	log.Println("  Created 3 coverage analysis records")
+}
+
+func seedAIUsageStats(db *gorm.DB) {
+	providers := []models.AIProviderType{models.AIProviderAnthropic, models.AIProviderOpenAI}
+	aiModels := map[models.AIProviderType][]string{
+		models.AIProviderAnthropic: {"claude-3-opus", "claude-3-sonnet"},
+		models.AIProviderOpenAI:    {"gpt-4", "gpt-4-turbo"},
+	}
+
+	for day := 0; day < 30; day++ {
+		date := time.Now().AddDate(0, 0, -day).Truncate(24 * time.Hour)
+
+		for _, provider := range providers {
+			for _, model := range aiModels[provider] {
+				totalRequests := rand.Intn(50) + 10
+				successCount := int(float64(totalRequests) * (0.9 + rand.Float64()*0.1))
+				failureCount := totalRequests - successCount
+
+				stats := models.AIUsageStats{
+					ID:            uuid.New(),
+					Provider:      provider,
+					Model:         model,
+					Date:          date,
+					TotalRequests: totalRequests,
+					TotalTokens:   totalRequests * (rand.Intn(1000) + 500),
+					SuccessCount:  successCount,
+					FailureCount:  failureCount,
+					AvgLatencyMs:  int64(rand.Intn(3000) + 500),
+					CreatedAt:     time.Now(),
+					UpdatedAt:     time.Now(),
+				}
+				db.Create(&stats)
+			}
+		}
+	}
+	log.Println("  Created 120 AI usage stats (30 days × 4 models)")
+}
+
+// ============================================================================
+// PHASE 8: Scheduling
+// ============================================================================
+
+func seedSchedules(db *gorm.DB) {
+	log.Println("📅 Seeding schedules...")
+
+	if len(flows) == 0 {
+		log.Println("  No flows found, skipping schedules")
+		return
+	}
+
+	scheduleData := []struct {
+		name     string
+		cron     string
+		status   models.ScheduleStatus
+		timezone string
+	}{
+		{"Nightly Regression", "0 2 * * *", models.ScheduleStatusActive, "UTC"},
+		{"Hourly Health Check", "0 * * * *", models.ScheduleStatusActive, "UTC"},
+		{"Weekly Full Suite", "0 3 * * 0", models.ScheduleStatusActive, "America/New_York"},
+		{"Deploy Verification", "*/15 * * * *", models.ScheduleStatusPaused, "UTC"},
+		{"Monday Morning Run", "0 8 * * 1", models.ScheduleStatusActive, "Europe/London"},
+		{"Pre-Release Tests", "0 18 * * 5", models.ScheduleStatusDisabled, "UTC"},
+		{"Database Backup Verify", "30 4 * * *", models.ScheduleStatusActive, "UTC"},
+		{"Performance Baseline", "0 6 1 * *", models.ScheduleStatusActive, "UTC"},
+	}
+
+	for i, s := range scheduleData {
+		flow := flows[i%len(flows)]
+		nextRun := time.Now().Add(time.Duration(rand.Intn(24)) * time.Hour)
+		lastRun := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+
+		var lastRunID *uuid.UUID
+		if len(executions) > 0 {
+			id := executions[i%len(executions)].ID
+			lastRunID = &id
+		}
+
+		schedule := models.Schedule{
+			ID:              uuid.New(),
+			Name:            s.name,
+			Description:     fmt.Sprintf("Scheduled run for %s", s.name),
+			FlowID:          flow.ID,
+			CronExpr:        s.cron,
+			Timezone:        s.timezone,
+			Status:          s.status,
+			NotifyOnFailure: true,
+			NotifyOnSuccess: false,
+			NotifyEmails:    []string{"team@testmesh.io", "oncall@testmesh.io"},
+			MaxRetries:      2,
+			RetryDelay:      "5m",
+			NextRunAt:       &nextRun,
+			LastRunAt:       &lastRun,
+			LastRunID:       lastRunID,
+			LastRunResult:   []string{"success", "failure", "success"}[rand.Intn(3)],
+			Tags:            []string{"automated", "scheduled"},
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
+		}
+
+		if err := db.Create(&schedule).Error; err != nil {
+			log.Printf("Failed to create schedule %s: %v", s.name, err)
+			continue
+		}
+		schedules = append(schedules, schedule)
+
+		// Create schedule runs
+		seedScheduleRuns(db, schedule)
+	}
+
+	log.Printf("  Created %d schedules", len(schedules))
+}
+
+func seedScheduleRuns(db *gorm.DB, schedule models.Schedule) {
+	statuses := []string{"completed", "completed", "completed", "failed", "skipped"}
+	results := []string{"success", "success", "success", "failure", "skipped"}
+
+	numRuns := rand.Intn(10) + 5 // 5-15 runs
+	for i := 0; i < numRuns; i++ {
+		scheduledAt := time.Now().Add(-time.Duration(i*24) * time.Hour)
+		startedAt := scheduledAt.Add(time.Duration(rand.Intn(60)) * time.Second)
+		completedAt := startedAt.Add(time.Duration(rand.Intn(300)+60) * time.Second)
+
+		status := statuses[i%len(statuses)]
+		result := results[i%len(statuses)]
+
+		var errMsg string
+		if result == "failure" {
+			errMsg = "Test execution failed: assertion error"
+		}
+
+		var execID *uuid.UUID
+		if len(executions) > 0 && status == "completed" {
+			id := executions[rand.Intn(len(executions))].ID
+			execID = &id
+		}
+
+		run := models.ScheduleRun{
+			ID:          uuid.New(),
+			ScheduleID:  schedule.ID,
+			ExecutionID: execID,
+			Status:      status,
+			Result:      result,
+			Error:       errMsg,
+			RetryCount:  0,
+			ScheduledAt: scheduledAt,
+			StartedAt:   &startedAt,
+			CompletedAt: &completedAt,
+			Duration:    completedAt.Sub(startedAt).Milliseconds(),
+			CreatedAt:   scheduledAt,
+		}
+		db.Create(&run)
+	}
+}
+
+// ============================================================================
+// PHASE 9: Request History
+// ============================================================================
+
+func seedRequestHistory(db *gorm.DB) {
+	log.Println("📝 Seeding request history...")
+
+	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
+	urls := []string{
+		"https://api.testmesh.io/v1/users",
+		"https://api.testmesh.io/v1/users/123",
+		"https://api.testmesh.io/v1/auth/login",
+		"https://api.testmesh.io/v1/products",
+		"https://api.testmesh.io/v1/orders",
+		"https://api.testmesh.io/v1/payments",
+		"https://api.testmesh.io/v1/notifications",
+		"https://api.testmesh.io/v1/health",
+	}
+	statusCodes := []int{200, 201, 400, 401, 404, 500}
+
+	for i := 0; i < 20; i++ {
+		method := methods[rand.Intn(len(methods))]
+		url := urls[rand.Intn(len(urls))]
+		statusCode := statusCodes[rand.Intn(len(statusCodes))]
+		duration := int64(rand.Intn(2000) + 50)
+
+		var flowID *uuid.UUID
+		if len(flows) > 0 && rand.Float32() > 0.3 {
+			id := flows[rand.Intn(len(flows))].ID
+			flowID = &id
+		}
+
+		var collectionID *uuid.UUID
+		if len(collections) > 0 && rand.Float32() > 0.5 {
+			id := collections[rand.Intn(len(collections))].ID
+			collectionID = &id
+		}
+
+		var savedAt *time.Time
+		if rand.Float32() > 0.7 {
+			saved := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+			savedAt = &saved
+		}
+
+		history := models.RequestHistory{
+			ID:           uuid.New(),
+			FlowID:       flowID,
+			CollectionID: collectionID,
+			Method:       method,
+			URL:          url,
+			Request: models.RequestHistoryData{
+				Method: method,
+				URL:    url,
+				Headers: map[string]string{
+					"Content-Type":  "application/json",
+					"Authorization": "Bearer token123",
+				},
+				Body:     `{"test": true}`,
+				BodyType: "json",
+			},
+			Response: models.ResponseHistoryData{
+				StatusCode: statusCode,
+				StatusText: getStatusText(statusCode),
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				Body:      `{"success": true}`,
+				SizeBytes: int64(rand.Intn(5000) + 100),
+				TimeMs:    duration,
+			},
+			StatusCode: statusCode,
+			DurationMs: duration,
+			SizeBytes:  int64(rand.Intn(5000) + 100),
+			Tags:       []string{"api", "test"},
+			SavedAt:    savedAt,
+			CreatedAt:  time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour),
+		}
+		db.Create(&history)
+	}
+
+	log.Println("  Created 20 request history records")
+}
+
+func getStatusText(code int) string {
+	texts := map[int]string{
+		200: "OK",
+		201: "Created",
+		400: "Bad Request",
+		401: "Unauthorized",
+		404: "Not Found",
+		500: "Internal Server Error",
+	}
+	if text, ok := texts[code]; ok {
+		return text
+	}
+	return "Unknown"
+}
+
+// ============================================================================
+// Summary
+// ============================================================================
+
+func printSummary() {
+	summary := `
+╔════════════════════════════════════════════════════════════╗
+║                    SEEDING SUMMARY                         ║
+╠════════════════════════════════════════════════════════════╣
+║  Environments:        4                                    ║
+║  Collections:         8 (5 root + 3 nested)                ║
+║  Flows:               15                                   ║
+║  Executions:          50                                   ║
+║  Mock Servers:        5                                    ║
+║  Contracts:           6                                    ║
+║  Schedules:           8                                    ║
+║  Daily Metrics:       120 (30 days × 4 envs)               ║
+║  Flakiness Metrics:   5                                    ║
+║  Reports:             5                                    ║
+║  AI Generation:       10                                   ║
+║  AI Suggestions:      8                                    ║
+║  Import History:      5                                    ║
+║  Coverage Analysis:   3                                    ║
+║  AI Usage Stats:      120 (30 days × 4 models)             ║
+║  Request History:     20                                   ║
+╚════════════════════════════════════════════════════════════╝
+`
+	fmt.Println(summary)
+}
