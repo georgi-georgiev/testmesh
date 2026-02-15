@@ -9,6 +9,7 @@ import (
 
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
@@ -55,8 +56,8 @@ func (a *Analyzer) AnalyzeOpenAPICoverage(ctx context.Context, spec string, opts
 	}
 	a.db.Create(analysis)
 
-	// Get all flows
-	flows, _, err := a.flowRepo.List("", nil, 1000, 0)
+	// Get all flows in the workspace
+	flows, _, err := a.flowRepo.List(opts.WorkspaceID, "", nil, 1000, 0)
 	if err != nil {
 		analysis.Status = models.CoverageStatusFailed
 		analysis.Error = err.Error()
@@ -354,7 +355,8 @@ func normalizePath(path string) string {
 
 // AnalysisOptions configures coverage analysis
 type AnalysisOptions struct {
-	BaseURL string // Base URL to strip from flow URLs for matching
+	BaseURL     string    // Base URL to strip from flow URLs for matching
+	WorkspaceID uuid.UUID // Workspace to analyze flows within
 }
 
 // CoverageResult holds the result of coverage analysis

@@ -242,7 +242,7 @@ Generate flows that:
 		}
 
 		if opts.CreateFlows {
-			if err := g.flowRepo.Create(flow); err != nil {
+			if err := g.flowRepo.Create(flow, opts.WorkspaceID); err != nil {
 				g.logger.Error("Failed to create flow", zap.Error(err))
 				continue
 			}
@@ -365,7 +365,7 @@ Requests:
 		}
 
 		if opts.CreateFlows {
-			if err := g.flowRepo.Create(flow); err != nil {
+			if err := g.flowRepo.Create(flow, opts.WorkspaceID); err != nil {
 				continue
 			}
 		}
@@ -491,7 +491,7 @@ Interactions:
 		}
 
 		if opts.CreateFlows {
-			if err := g.flowRepo.Create(flow); err != nil {
+			if err := g.flowRepo.Create(flow, opts.WorkspaceID); err != nil {
 				continue
 			}
 		}
@@ -583,7 +583,8 @@ type GenerationResult struct {
 type ImportOptions struct {
 	Provider    models.AIProviderType
 	Model       string
-	CreateFlows bool // If true, creates flows in database
+	CreateFlows bool      // If true, creates flows in database
+	WorkspaceID uuid.UUID // Workspace to create flows in
 }
 
 // ImportResult holds the result of an import operation

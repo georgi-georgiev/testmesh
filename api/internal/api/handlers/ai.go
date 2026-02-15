@@ -234,7 +234,19 @@ func (h *AIHandler) AnalyzeFailure(c *gin.Context) {
 		return
 	}
 
-	result, err := h.selfHealing.AnalyzeFailure(c.Request.Context(), id)
+	// Get workspace_id from request body or query
+	workspaceIDStr := c.Query("workspace_id")
+	if workspaceIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace_id is required"})
+		return
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid workspace_id"})
+		return
+	}
+
+	result, err := h.selfHealing.AnalyzeFailure(c.Request.Context(), id, workspaceID)
 	if err != nil {
 		h.logger.Error("Failed to analyze failure", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -304,7 +316,19 @@ func (h *AIHandler) ApplySuggestion(c *gin.Context) {
 		return
 	}
 
-	result, err := h.selfHealing.ApplySuggestion(c.Request.Context(), id)
+	// Get workspace_id from request body or query
+	workspaceIDStr := c.Query("workspace_id")
+	if workspaceIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace_id is required"})
+		return
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid workspace_id"})
+		return
+	}
+
+	result, err := h.selfHealing.ApplySuggestion(c.Request.Context(), id, workspaceID)
 	if err != nil {
 		h.logger.Error("Failed to apply suggestion", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

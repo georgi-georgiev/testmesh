@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/georgi-georgiev/testmesh/internal/runner/debugger"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -18,6 +19,16 @@ const (
 	EventStepStarted        EventType = "step.started"
 	EventStepCompleted      EventType = "step.completed"
 	EventStepFailed         EventType = "step.failed"
+
+	// Debug events
+	EventDebugPaused         EventType = "debug.paused"
+	EventDebugResumed        EventType = "debug.resumed"
+	EventDebugStep           EventType = "debug.step"
+	EventDebugVariables      EventType = "debug.variables"
+	EventDebugBreakpointHit  EventType = "debug.breakpoint.hit"
+	EventDebugError          EventType = "debug.error"
+	EventDebugSessionStarted EventType = "debug.session.started"
+	EventDebugSessionEnded   EventType = "debug.session.ended"
 )
 
 // Event represents a WebSocket event
@@ -220,4 +231,57 @@ func (h *Hub) GetClientCount(executionID uuid.UUID) int {
 // MarshalEvent marshals an event to JSON
 func MarshalEvent(event *Event) ([]byte, error) {
 	return json.Marshal(event)
+}
+
+// BroadcastDebugEvent implements the debugger.DebugEventHandler interface
+func (h *Hub) BroadcastDebugEvent(executionID uuid.UUID, event *debugger.DebugEvent) {
+	// Map debug event type to WebSocket event type
+	var eventType EventType
+	switch event.Type {
+	case "debug.paused":
+		eventType = EventDebugPaused
+	case "debug.resumed":
+		eventType = EventDebugResumed
+	case "debug.step":
+		eventType = EventDebugStep
+	case "debug.variables":
+		eventType = EventDebugVariables
+	case "debug.breakpoint.hit":
+		eventType = EventDebugBreakpointHit
+	case "debug.error":
+		eventType = EventDebugError
+	default:
+		eventType = EventType(event.Type)
+	}
+
+	data := event.Data
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	data["session_id"] = event.SessionID.String()
+	data["timestamp"] = event.Timestamp
+
+	h.broadcast <- &Event{
+		Type:        eventType,
+		ExecutionID: executionID,
+		Data:        data,
+	}
+}
+
+// BroadcastDebugSessionStarted broadcasts when a debug session starts
+func (h *Hub) BroadcastDebugSessionStarted(executionID uuid.UUID, data map[string]interface{}) {
+	h.broadcast <- &Event{
+		Type:        EventDebugSessionStarted,
+		ExecutionID: executionID,
+		Data:        data,
+	}
+}
+
+// BroadcastDebugSessionEnded broadcasts when a debug session ends
+func (h *Hub) BroadcastDebugSessionEnded(executionID uuid.UUID, data map[string]interface{}) {
+	h.broadcast <- &Event{
+		Type:        EventDebugSessionEnded,
+		ExecutionID: executionID,
+		Data:        data,
+	}
 }

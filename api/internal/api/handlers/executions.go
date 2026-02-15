@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/runner"
 	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
@@ -17,6 +18,7 @@ import (
 type ExecutionHandler struct {
 	execRepo     *repository.ExecutionRepository
 	flowRepo     *repository.FlowRepository
+	envRepo      *repository.EnvironmentRepository
 	mockRepo     *repository.MockRepository
 	contractRepo *repository.ContractRepository
 	logger       *zap.Logger
@@ -24,10 +26,11 @@ type ExecutionHandler struct {
 }
 
 // NewExecutionHandler creates a new execution handler
-func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, mockRepo *repository.MockRepository, contractRepo *repository.ContractRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
+func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, envRepo *repository.EnvironmentRepository, mockRepo *repository.MockRepository, contractRepo *repository.ContractRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
 	return &ExecutionHandler{
 		execRepo:     execRepo,
 		flowRepo:     flowRepo,
+		envRepo:      envRepo,
 		mockRepo:     mockRepo,
 		contractRepo: contractRepo,
 		logger:       logger,
@@ -54,8 +57,11 @@ func (h *ExecutionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Get workspace ID from context
+	workspaceID := middleware.GetWorkspaceID(c)
+
 	// Get flow
-	flow, err := h.flowRepo.GetByID(flowID)
+	flow, err := h.flowRepo.GetByID(flowID, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
 		return
@@ -74,19 +80,22 @@ func (h *ExecutionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Start execution in background (we'll implement this properly later)
-	go h.executeFlow(execution, flow, req.Variables)
+	// Start execution in background
+	go h.executeFlow(execution, flow, req.Variables, req.Environment, workspaceID)
 
 	c.JSON(http.StatusCreated, execution)
 }
 
-// executeFlow runs the flow execution (placeholder for now)
-func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models.Flow, variables map[string]string) {
+// executeFlow runs the flow execution
+func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models.Flow, variables map[string]string, environmentRef string, workspaceID uuid.UUID) {
 	// Update status to running
 	execution.Status = models.ExecutionStatusRunning
 	now := time.Now()
 	execution.StartedAt = &now
 	h.execRepo.Update(execution)
+
+	// Merge environment variables into the execution context
+	mergedVars := h.mergeEnvironmentVariables(environmentRef, workspaceID, variables)
 
 	// Create mock manager for this execution
 	mockManager := mocks.NewManager(h.mockRepo, h.logger)
@@ -94,7 +103,7 @@ func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models
 
 	// Execute flow using the runner
 	executor := runner.NewExecutor(h.execRepo, h.contractRepo, h.logger, h.wsHub, mockManager)
-	err := executor.Execute(execution, &flow.Definition, variables)
+	err := executor.Execute(execution, &flow.Definition, mergedVars)
 
 	// Update execution status
 	finishedAt := time.Now()
@@ -263,4 +272,49 @@ func (h *ExecutionHandler) GetStep(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, step)
+}
+
+// mergeEnvironmentVariables fetches environment variables and merges them with runtime variables.
+// Priority order (later overrides earlier):
+//   1. Environment variables (from selected environment)
+//   2. Runtime variables (passed at execution time)
+func (h *ExecutionHandler) mergeEnvironmentVariables(environmentRef string, workspaceID uuid.UUID, runtimeVars map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	// Fetch environment if specified
+	if environmentRef != "" {
+		var env *models.Environment
+		var err error
+
+		// Try parsing as UUID first
+		if envID, parseErr := uuid.Parse(environmentRef); parseErr == nil {
+			env, err = h.envRepo.GetByID(envID, workspaceID)
+		} else {
+			// Fall back to name lookup
+			env, err = h.envRepo.GetByName(environmentRef, workspaceID)
+		}
+
+		if err != nil {
+			h.logger.Warn("Failed to fetch environment",
+				zap.String("environment", environmentRef),
+				zap.Error(err))
+		} else if env != nil {
+			// Add enabled environment variables
+			for _, v := range env.Variables {
+				if v.Enabled {
+					merged[v.Key] = v.Value
+				}
+			}
+			h.logger.Debug("Loaded environment variables",
+				zap.String("environment", env.Name),
+				zap.Int("variable_count", len(env.Variables)))
+		}
+	}
+
+	// Override with runtime variables (higher priority)
+	for k, v := range runtimeVars {
+		merged[k] = v
+	}
+
+	return merged
 }

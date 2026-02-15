@@ -14,6 +14,7 @@ import (
 // Flow represents a test flow definition
 type Flow struct {
 	ID           uuid.UUID      `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;index;not null" json:"workspace_id"`
 	Name         string         `gorm:"not null;index" json:"name"`
 	Description  string         `json:"description"`
 	Suite        string         `gorm:"index" json:"suite"`

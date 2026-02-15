@@ -10,6 +10,7 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/runner/actions"
 	"github.com/georgi-georgiev/testmesh/internal/runner/assertions"
 	"github.com/georgi-georgiev/testmesh/internal/runner/contracts"
+	"github.com/georgi-georgiev/testmesh/internal/runner/debugger"
 	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
@@ -19,12 +20,13 @@ import (
 
 // Executor orchestrates flow execution
 type Executor struct {
-	repo           *repository.ExecutionRepository
-	contractRepo   *repository.ContractRepository
-	logger         *zap.Logger
-	wsHub          WSHub // WebSocket hub interface
-	mockManager    *mocks.Manager
-	pluginRegistry *plugins.Registry
+	repo            *repository.ExecutionRepository
+	contractRepo    *repository.ContractRepository
+	logger          *zap.Logger
+	wsHub           WSHub // WebSocket hub interface
+	mockManager     *mocks.Manager
+	pluginRegistry  *plugins.Registry
+	debugController *debugger.Controller
 }
 
 // WSHub interface for WebSocket broadcasting
@@ -51,6 +53,16 @@ func NewExecutor(repo *repository.ExecutionRepository, contractRepo *repository.
 // SetPluginRegistry sets the plugin registry for custom action support
 func (e *Executor) SetPluginRegistry(registry *plugins.Registry) {
 	e.pluginRegistry = registry
+}
+
+// SetDebugController sets the debug controller for debugging support
+func (e *Executor) SetDebugController(controller *debugger.Controller) {
+	e.debugController = controller
+}
+
+// GetDebugController returns the debug controller
+func (e *Executor) GetDebugController() *debugger.Controller {
+	return e.debugController
 }
 
 // ExecuteWithoutPersistence runs a flow without persisting results to the database.
@@ -201,7 +213,7 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 		}
 
 		// Execute the step with retry logic
-		result, err := e.executeStepWithRetry(ctx, &step, execStep, execCtx)
+		result, err := e.executeStepWithRetry(ctx, &step, execStep, execCtx, execution.ID)
 
 		// Update step record
 		finishedAt := time.Now()
@@ -266,7 +278,7 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 }
 
 // executeStepWithRetry executes a step with retry logic
-func (e *Executor) executeStepWithRetry(ctx context.Context, step *models.Step, execStep *models.ExecutionStep, execCtx *Context) (models.OutputData, error) {
+func (e *Executor) executeStepWithRetry(ctx context.Context, step *models.Step, execStep *models.ExecutionStep, execCtx *Context, executionID uuid.UUID) (models.OutputData, error) {
 	maxAttempts := 1
 	var delay time.Duration
 	backoff := "fixed"
@@ -315,7 +327,7 @@ func (e *Executor) executeStepWithRetry(ctx context.Context, step *models.Step, 
 			}
 		}
 
-		result, err := e.executeStep(ctx, step, execCtx)
+		result, err := e.executeStepWithDebug(ctx, step, execCtx, executionID)
 		if err == nil {
 			return result, nil
 		}
@@ -337,21 +349,52 @@ func (e *Executor) executeStepWithRetry(ctx context.Context, step *models.Step, 
 
 // executeStep executes a single step
 func (e *Executor) executeStep(ctx context.Context, step *models.Step, execCtx *Context) (models.OutputData, error) {
+	return e.executeStepWithDebug(ctx, step, execCtx, uuid.Nil)
+}
+
+// executeStepWithDebug executes a single step with optional debug support
+func (e *Executor) executeStepWithDebug(ctx context.Context, step *models.Step, execCtx *Context, executionID uuid.UUID) (models.OutputData, error) {
+	startTime := time.Now()
+
 	// Create interpolator
 	interpolator := NewInterpolator(execCtx)
 
 	// Interpolate variables in config
 	config := interpolator.InterpolateMap(step.Config)
 
+	// Debug: Check breakpoints before step execution
+	if e.debugController != nil && executionID != uuid.Nil {
+		// Update debugger with current variables
+		vars := make(map[string]interface{})
+		for k, v := range execCtx.variables {
+			vars[k] = v
+		}
+		for stepID, outputs := range execCtx.stepOutputs {
+			vars["$"+stepID] = outputs
+		}
+		e.debugController.UpdateVariables(executionID, vars)
+
+		// Call debug hook before step
+		shouldContinue, err := e.debugController.OnBeforeStep(ctx, executionID, step.ID, step.Name, step.Action, config)
+		if err != nil {
+			return nil, fmt.Errorf("debug error: %w", err)
+		}
+		if !shouldContinue {
+			return nil, fmt.Errorf("execution stopped")
+		}
+	}
+
 	// Get action handler
 	handler, err := e.getActionHandler(step.Action)
 	if err != nil {
+		e.notifyDebugAfterStep(executionID, step.ID, nil, err, time.Since(startTime))
 		return nil, err
 	}
 
 	// Execute action
 	result, err := handler.Execute(ctx, config)
 	if err != nil {
+		e.notifyDebugAfterStep(executionID, step.ID, result, err, time.Since(startTime))
 		return nil, err
 	}
 
@@ -359,12 +402,24 @@ func (e *Executor) executeStep(ctx context.Context, step *models.Step, execCtx *
 	if len(step.Assert) > 0 {
 		evaluator := assertions.NewEvaluator(result)
 		if err := evaluator.Evaluate(step.Assert); err != nil {
-			return result, fmt.Errorf("assertion failed: %w", err)
+			assertErr := fmt.Errorf("assertion failed: %w", err)
+			e.notifyDebugAfterStep(executionID, step.ID, result, assertErr, time.Since(startTime))
+			return result, assertErr
 		}
 		e.logger.Info("All assertions passed", zap.Int("count", len(step.Assert)))
 	}
 
+	// Debug: Notify after successful step
+	e.notifyDebugAfterStep(executionID, step.ID, result, nil, time.Since(startTime))
+
 	return result, nil
+}
+
+// notifyDebugAfterStep notifies the debugger after step completion
+func (e *Executor) notifyDebugAfterStep(executionID uuid.UUID, stepID string, output models.OutputData, err error, duration time.Duration) {
+	if e.debugController != nil && executionID != uuid.Nil {
+		e.debugController.OnAfterStep(executionID, stepID, output, err, duration)
+	}
 }
 
 // getActionHandler returns the appropriate action handler

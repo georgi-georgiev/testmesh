@@ -17,6 +17,7 @@ import {
   Plus,
   Trash2,
   X,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -101,7 +102,7 @@ export default function PropertiesPanel({
     );
   }
 
-  const Icon = actionIcons[localData.action];
+  const Icon = actionIcons[localData.action] || HelpCircle;
 
   return (
     <div className={cn('w-80 border-l bg-muted/30 flex flex-col h-full', className)}>

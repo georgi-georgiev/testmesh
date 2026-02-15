@@ -10,6 +10,7 @@ import (
 var (
 	cfgFile string
 	apiURL  string
+	verbose bool
 )
 
 // rootCmd represents the base command
@@ -35,6 +36,7 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .testmesh.yaml)")
 	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:5016", "TestMesh API URL")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 }
 
 func initConfig() {

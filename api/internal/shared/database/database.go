@@ -69,10 +69,45 @@ func AutoMigrate(db *gorm.DB) error {
 	// We'll do this manually here to avoid circular dependencies
 	// In production, you might want to use a proper migration tool like golang-migrate
 
+	// Create workspaces table FIRST (other tables reference it)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS workspaces (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			slug VARCHAR(255) NOT NULL UNIQUE,
+			description TEXT,
+			type VARCHAR(20) NOT NULL DEFAULT 'personal',
+			owner_id UUID,
+			settings JSONB DEFAULT '{}',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_owner_id ON workspaces(owner_id);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_deleted_at ON workspaces(deleted_at);
+	`)
+
+	// Create default workspace for existing data
+	db.Exec(`
+		INSERT INTO workspaces (id, name, slug, description, type, owner_id)
+		VALUES (
+			'00000000-0000-0000-0000-000000000001'::uuid,
+			'Default Workspace',
+			'default',
+			'Default workspace',
+			'personal',
+			'00000000-0000-0000-0000-000000000001'::uuid
+		)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
 	// Create environments table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS flows.environments (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 			name VARCHAR(255) NOT NULL,
 			description TEXT,
 			color VARCHAR(20),
@@ -84,12 +119,21 @@ func AutoMigrate(db *gorm.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_environments_name ON flows.environments(name);
 		CREATE INDEX IF NOT EXISTS idx_environments_deleted_at ON flows.environments(deleted_at);
+		CREATE INDEX IF NOT EXISTS idx_environments_workspace_id ON flows.environments(workspace_id);
+	`)
+
+	// Add workspace_id column to existing environments table (idempotent migration)
+	db.Exec(`
+		ALTER TABLE flows.environments ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE;
+		CREATE INDEX IF NOT EXISTS idx_environments_workspace_id ON flows.environments(workspace_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_workspace_name ON flows.environments(workspace_id, name) WHERE deleted_at IS NULL;
 	`)
 
 	// Create collections table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS flows.collections (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 			name VARCHAR(255) NOT NULL,
 			description TEXT,
 			icon VARCHAR(100),
@@ -105,12 +149,21 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_collections_name ON flows.collections(name);
 		CREATE INDEX IF NOT EXISTS idx_collections_parent_id ON flows.collections(parent_id);
 		CREATE INDEX IF NOT EXISTS idx_collections_deleted_at ON flows.collections(deleted_at);
+		CREATE INDEX IF NOT EXISTS idx_collections_workspace_id ON flows.collections(workspace_id);
+	`)
+
+	// Add workspace_id column to existing collections table (idempotent migration)
+	db.Exec(`
+		ALTER TABLE flows.collections ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE;
+		CREATE INDEX IF NOT EXISTS idx_collections_workspace_id ON flows.collections(workspace_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_workspace_name ON flows.collections(workspace_id, name) WHERE deleted_at IS NULL;
 	`)
 
 	// Create flows table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS flows.flows (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 			name VARCHAR(255) NOT NULL,
 			description TEXT,
 			suite VARCHAR(255),
@@ -127,12 +180,16 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_flows_suite ON flows.flows(suite);
 		CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows.flows(deleted_at);
 		CREATE INDEX IF NOT EXISTS idx_flows_collection_id ON flows.flows(collection_id);
+		CREATE INDEX IF NOT EXISTS idx_flows_workspace_id ON flows.flows(workspace_id);
 	`)
 
 	// Add missing columns to existing flows table (idempotent migration)
 	db.Exec(`
 		ALTER TABLE flows.flows ADD COLUMN IF NOT EXISTS collection_id UUID;
 		ALTER TABLE flows.flows ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+		ALTER TABLE flows.flows ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE;
+		CREATE INDEX IF NOT EXISTS idx_flows_workspace_id ON flows.flows(workspace_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_flows_workspace_name ON flows.flows(workspace_id, name) WHERE deleted_at IS NULL;
 	`)
 
 	// Create executions table
@@ -640,26 +697,6 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_collection_items_flow_id ON flows.collection_items(flow_id);
 	`)
 
-	// Create workspaces table
-	db.Exec(`
-		CREATE TABLE IF NOT EXISTS workspaces (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			name VARCHAR(255) NOT NULL,
-			slug VARCHAR(255) NOT NULL UNIQUE,
-			description TEXT,
-			type VARCHAR(20) NOT NULL DEFAULT 'personal',
-			owner_id UUID,
-			settings JSONB DEFAULT '{}',
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			deleted_at TIMESTAMP WITH TIME ZONE
-		);
-		CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
-		CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
-		CREATE INDEX IF NOT EXISTS idx_workspaces_owner_id ON workspaces(owner_id);
-		CREATE INDEX IF NOT EXISTS idx_workspaces_deleted_at ON workspaces(deleted_at);
-	`)
-
 	// Create workspace_members table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS workspace_members (
@@ -673,7 +710,8 @@ func AutoMigrate(db *gorm.DB) error {
 			invited_at TIMESTAMP WITH TIME ZONE,
 			joined_at TIMESTAMP WITH TIME ZONE,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(workspace_id, user_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_id ON workspace_members(workspace_id);
 		CREATE INDEX IF NOT EXISTS idx_workspace_members_user_id ON workspace_members(user_id);
@@ -786,5 +824,342 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_versions_flow_version ON flow_versions(flow_id, version);
 	`)
 
+	// Migration: Assign existing data to default workspace
+	db.Exec(`
+		-- Update flows without workspace_id
+		UPDATE flows.flows
+		SET workspace_id = '00000000-0000-0000-0000-000000000001'::uuid
+		WHERE workspace_id IS NULL;
+
+		-- Update collections without workspace_id
+		UPDATE flows.collections
+		SET workspace_id = '00000000-0000-0000-0000-000000000001'::uuid
+		WHERE workspace_id IS NULL;
+
+		-- Update environments without workspace_id
+		UPDATE flows.environments
+		SET workspace_id = '00000000-0000-0000-0000-000000000001'::uuid
+		WHERE workspace_id IS NULL;
+
+		-- Add default workspace member
+		INSERT INTO workspace_members (workspace_id, user_id, email, name, role, joined_at)
+		VALUES (
+			'00000000-0000-0000-0000-000000000001'::uuid,
+			'00000000-0000-0000-0000-000000000001'::uuid,
+			'default@testmesh.local',
+			'Default User',
+			'owner',
+			CURRENT_TIMESTAMP
+		)
+		ON CONFLICT (workspace_id, user_id) DO NOTHING;
+	`)
+
+	// Seed comprehensive sample data
+	seedSampleData(db)
+
 	return nil
+}
+
+// seedSampleData creates sample data for all features
+func seedSampleData(db *gorm.DB) {
+	// ==================== ENVIRONMENTS ====================
+	db.Exec(`
+		INSERT INTO flows.environments (id, workspace_id, name, description, color, is_default, variables)
+		VALUES
+			('00000000-0000-0000-0000-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Development', 'Local development environment', 'green', true, '[{"key": "base_url", "value": "http://localhost:8080", "type": "text"}, {"key": "api_key", "value": "dev-key-123", "type": "secret"}, {"key": "db_host", "value": "localhost", "type": "text"}]'),
+			('00000000-0000-0000-0000-000000000002'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Staging', 'Staging environment for QA', 'yellow', false, '[{"key": "base_url", "value": "https://staging.api.example.com", "type": "text"}, {"key": "api_key", "value": "stg-key-456", "type": "secret"}]'),
+			('00000000-0000-0000-0000-000000000003'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Production', 'Production environment', 'red', false, '[{"key": "base_url", "value": "https://api.example.com", "type": "text"}, {"key": "api_key", "value": "prod-key-789", "type": "secret"}]')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== COLLECTIONS ====================
+	db.Exec(`
+		INSERT INTO flows.collections (id, workspace_id, name, description, icon, color, parent_id, sort_order)
+		VALUES
+			('00000000-0000-0000-0001-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'User Management API', 'User CRUD and authentication tests', 'users', 'blue', NULL, 0),
+			('00000000-0000-0000-0001-000000000002'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'E-Commerce API', 'Product and order management tests', 'shopping-cart', 'purple', NULL, 1),
+			('00000000-0000-0000-0001-000000000003'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Authentication', 'Auth flow tests', 'lock', 'green', '00000000-0000-0000-0001-000000000001'::uuid, 0),
+			('00000000-0000-0000-0001-000000000004'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Products', 'Product catalog tests', 'package', 'orange', '00000000-0000-0000-0001-000000000002'::uuid, 0),
+			('00000000-0000-0000-0001-000000000005'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Orders', 'Order management tests', 'file-text', 'teal', '00000000-0000-0000-0001-000000000002'::uuid, 1),
+			('00000000-0000-0000-0001-000000000006'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Payment Integration', 'Payment gateway tests', 'credit-card', 'pink', NULL, 2),
+			('00000000-0000-0000-0001-000000000007'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Notifications', 'Email and push notification tests', 'bell', 'yellow', NULL, 3)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== FLOWS ====================
+	db.Exec(`
+		INSERT INTO flows.flows (id, workspace_id, name, description, suite, tags, definition, collection_id, sort_order)
+		VALUES
+			-- User Management Flows
+			('00000000-0000-0000-0002-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'User Registration', 'Test user registration flow', 'smoke', ARRAY['api', 'users', 'auth'],
+			'{"name": "User Registration", "description": "Test user registration flow", "suite": "smoke", "tags": ["api", "users", "auth"], "steps": [{"id": "register", "name": "Register New User", "action": "http", "config": {"method": "POST", "url": "{{base_url}}/api/users/register", "body": {"email": "test@example.com", "password": "SecurePass123!", "name": "Test User"}}, "assertions": [{"type": "status", "expected": 201}], "extract": [{"name": "user_id", "type": "jsonpath", "path": "$.id"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000001'::uuid, 0),
+
+			('00000000-0000-0000-0002-000000000002'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'User Login', 'Test user authentication', 'smoke', ARRAY['api', 'auth'],
+			'{"name": "User Login", "description": "Test user authentication", "suite": "smoke", "tags": ["api", "auth"], "steps": [{"id": "login", "name": "Login User", "action": "http", "config": {"method": "POST", "url": "{{base_url}}/api/auth/login", "body": {"email": "test@example.com", "password": "SecurePass123!"}}, "assertions": [{"type": "status", "expected": 200}, {"type": "jsonpath", "path": "$.token", "operator": "exists"}], "extract": [{"name": "auth_token", "type": "jsonpath", "path": "$.token"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000003'::uuid, 0),
+
+			('00000000-0000-0000-0002-000000000003'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Get User Profile', 'Fetch authenticated user profile', 'integration', ARRAY['api', 'users'],
+			'{"name": "Get User Profile", "description": "Fetch authenticated user profile", "suite": "integration", "tags": ["api", "users"], "steps": [{"id": "get-profile", "name": "Get Profile", "action": "http", "config": {"method": "GET", "url": "{{base_url}}/api/users/me", "headers": {"Authorization": "Bearer {{auth_token}}"}}, "assertions": [{"type": "status", "expected": 200}, {"type": "jsonpath", "path": "$.email", "operator": "equals", "expected": "test@example.com"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000001'::uuid, 1),
+
+			-- E-Commerce Flows
+			('00000000-0000-0000-0002-000000000004'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'List Products', 'Get product catalog', 'smoke', ARRAY['api', 'products'],
+			'{"name": "List Products", "description": "Get product catalog", "suite": "smoke", "tags": ["api", "products"], "steps": [{"id": "list-products", "name": "Get Products", "action": "http", "config": {"method": "GET", "url": "{{base_url}}/api/products", "params": {"limit": 10, "offset": 0}}, "assertions": [{"type": "status", "expected": 200}, {"type": "jsonpath", "path": "$.products", "operator": "is_array"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000004'::uuid, 0),
+
+			('00000000-0000-0000-0002-000000000005'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Create Order', 'Place a new order', 'integration', ARRAY['api', 'orders'],
+			'{"name": "Create Order", "description": "Place a new order", "suite": "integration", "tags": ["api", "orders"], "steps": [{"id": "create-order", "name": "Create Order", "action": "http", "config": {"method": "POST", "url": "{{base_url}}/api/orders", "headers": {"Authorization": "Bearer {{auth_token}}"}, "body": {"items": [{"product_id": "prod-123", "quantity": 2}], "shipping_address": {"street": "123 Main St", "city": "New York", "zip": "10001"}}}, "assertions": [{"type": "status", "expected": 201}], "extract": [{"name": "order_id", "type": "jsonpath", "path": "$.id"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000005'::uuid, 0),
+
+			('00000000-0000-0000-0002-000000000006'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Process Payment', 'Process order payment', 'integration', ARRAY['api', 'payments'],
+			'{"name": "Process Payment", "description": "Process order payment", "suite": "integration", "tags": ["api", "payments"], "steps": [{"id": "process-payment", "name": "Submit Payment", "action": "http", "config": {"method": "POST", "url": "{{base_url}}/api/payments", "body": {"order_id": "{{order_id}}", "payment_method": "card", "card_token": "tok_visa"}}, "assertions": [{"type": "status", "expected": 200}, {"type": "jsonpath", "path": "$.status", "operator": "equals", "expected": "succeeded"}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000006'::uuid, 0),
+
+			('00000000-0000-0000-0002-000000000007'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Health Check', 'API health check', 'smoke', ARRAY['api', 'health'],
+			'{"name": "Health Check", "description": "API health check", "suite": "smoke", "tags": ["api", "health"], "steps": [{"id": "health", "name": "Check Health", "action": "http", "config": {"method": "GET", "url": "{{base_url}}/health"}, "assertions": [{"type": "status", "expected": 200}]}]}'::jsonb,
+			NULL, 0),
+
+			('00000000-0000-0000-0002-000000000008'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Database Connection Test', 'Test database connectivity', 'smoke', ARRAY['db', 'postgres'],
+			'{"name": "Database Connection Test", "description": "Test database connectivity", "suite": "smoke", "tags": ["db", "postgres"], "steps": [{"id": "db-query", "name": "Run Query", "action": "postgresql", "config": {"host": "{{db_host}}", "port": 5432, "database": "testdb", "query": "SELECT 1 as health"}, "assertions": [{"type": "row_count", "operator": "equals", "expected": 1}]}]}'::jsonb,
+			NULL, 1),
+
+			('00000000-0000-0000-0002-000000000009'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Kafka Message Test', 'Test Kafka producer/consumer', 'integration', ARRAY['kafka', 'messaging'],
+			'{"name": "Kafka Message Test", "description": "Test Kafka producer/consumer", "suite": "integration", "tags": ["kafka", "messaging"], "steps": [{"id": "produce", "name": "Produce Message", "action": "kafka", "config": {"operation": "produce", "brokers": ["localhost:9092"], "topic": "test-topic", "message": {"event": "test", "timestamp": "{{$timestamp}}"}}}, {"id": "consume", "name": "Consume Message", "action": "kafka", "config": {"operation": "consume", "brokers": ["localhost:9092"], "topic": "test-topic", "timeout": 5000}, "assertions": [{"type": "jsonpath", "path": "$.event", "operator": "equals", "expected": "test"}]}]}'::jsonb,
+			NULL, 2),
+
+			('00000000-0000-0000-0002-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Send Notification', 'Test notification service', 'integration', ARRAY['api', 'notifications'],
+			'{"name": "Send Notification", "description": "Test notification service", "suite": "integration", "tags": ["api", "notifications"], "steps": [{"id": "send-email", "name": "Send Email", "action": "http", "config": {"method": "POST", "url": "{{base_url}}/api/notifications/email", "body": {"to": "user@example.com", "subject": "Test", "body": "Test notification"}}, "assertions": [{"type": "status", "expected": 202}]}]}'::jsonb,
+			'00000000-0000-0000-0001-000000000007'::uuid, 0)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== EXECUTIONS ====================
+	db.Exec(`
+		INSERT INTO executions.executions (id, flow_id, status, environment, started_at, finished_at, duration_ms, total_steps, passed_steps, failed_steps)
+		VALUES
+			('00000000-0000-0000-0003-000000000001'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, 'completed', 'Development', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours' + INTERVAL '1500 milliseconds', 1500, 1, 1, 0),
+			('00000000-0000-0000-0003-000000000002'::uuid, '00000000-0000-0000-0002-000000000002'::uuid, 'completed', 'Development', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour' + INTERVAL '800 milliseconds', 800, 1, 1, 0),
+			('00000000-0000-0000-0003-000000000003'::uuid, '00000000-0000-0000-0002-000000000004'::uuid, 'completed', 'Staging', NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes' + INTERVAL '2200 milliseconds', 2200, 1, 1, 0),
+			('00000000-0000-0000-0003-000000000004'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, 'failed', 'Development', NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '20 minutes' + INTERVAL '3500 milliseconds', 3500, 1, 0, 1),
+			('00000000-0000-0000-0003-000000000005'::uuid, '00000000-0000-0000-0002-000000000007'::uuid, 'completed', 'Production', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes' + INTERVAL '250 milliseconds', 250, 1, 1, 0),
+			('00000000-0000-0000-0003-000000000006'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, 'running', 'Development', NOW() - INTERVAL '1 minute', NULL, NULL, 1, 0, 0)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== EXECUTION STEPS ====================
+	db.Exec(`
+		INSERT INTO executions.execution_steps (id, execution_id, step_id, step_name, action, status, started_at, finished_at, duration_ms, output)
+		VALUES
+			('00000000-0000-0000-0004-000000000001'::uuid, '00000000-0000-0000-0003-000000000001'::uuid, 'register', 'Register New User', 'http', 'passed', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours' + INTERVAL '1500 milliseconds', 1500, '{"status_code": 201, "body": {"id": "user-123", "email": "test@example.com"}}'::jsonb),
+			('00000000-0000-0000-0004-000000000002'::uuid, '00000000-0000-0000-0003-000000000002'::uuid, 'login', 'Login User', 'http', 'passed', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour' + INTERVAL '800 milliseconds', 800, '{"status_code": 200, "body": {"token": "eyJhbGciOiJIUzI1NiIs..."}}'::jsonb),
+			('00000000-0000-0000-0004-000000000003'::uuid, '00000000-0000-0000-0003-000000000003'::uuid, 'list-products', 'Get Products', 'http', 'passed', NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes' + INTERVAL '2200 milliseconds', 2200, '{"status_code": 200, "body": {"products": [{"id": "prod-1", "name": "Widget"}]}}'::jsonb),
+			('00000000-0000-0000-0004-000000000004'::uuid, '00000000-0000-0000-0003-000000000004'::uuid, 'create-order', 'Create Order', 'http', 'failed', NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '20 minutes' + INTERVAL '3500 milliseconds', 3500, '{"status_code": 500, "body": {"error": "Internal server error"}}'::jsonb),
+			('00000000-0000-0000-0004-000000000005'::uuid, '00000000-0000-0000-0003-000000000005'::uuid, 'health', 'Check Health', 'http', 'passed', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes' + INTERVAL '250 milliseconds', 250, '{"status_code": 200, "body": {"status": "healthy"}}'::jsonb)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== SCHEDULES ====================
+	db.Exec(`
+		INSERT INTO schedules (id, name, description, flow_id, cron_expr, timezone, status, environment, notify_on_failure, notify_emails, next_run_at, last_run_at, last_run_result, tags)
+		VALUES
+			('00000000-0000-0000-0005-000000000001'::uuid, 'Hourly Health Check', 'Run health check every hour', '00000000-0000-0000-0002-000000000007'::uuid, '0 * * * *', 'UTC', 'active', '{"environment": "Production"}'::jsonb, true, ARRAY['alerts@example.com'], NOW() + INTERVAL '1 hour', NOW() - INTERVAL '5 minutes', 'success', ARRAY['monitoring', 'health']),
+			('00000000-0000-0000-0005-000000000002'::uuid, 'Nightly Regression', 'Full regression suite at 2 AM', '00000000-0000-0000-0002-000000000001'::uuid, '0 2 * * *', 'America/New_York', 'active', '{"environment": "Staging"}'::jsonb, true, ARRAY['team@example.com'], NOW() + INTERVAL '8 hours', NOW() - INTERVAL '16 hours', 'success', ARRAY['regression', 'nightly']),
+			('00000000-0000-0000-0005-000000000003'::uuid, 'Weekly E2E Tests', 'End-to-end tests every Sunday', '00000000-0000-0000-0002-000000000005'::uuid, '0 6 * * 0', 'UTC', 'active', '{"environment": "Staging"}'::jsonb, true, ARRAY['qa@example.com'], NOW() + INTERVAL '3 days', NOW() - INTERVAL '4 days', 'failed', ARRAY['e2e', 'weekly']),
+			('00000000-0000-0000-0005-000000000004'::uuid, 'Database Health', 'Check DB connectivity every 15 min', '00000000-0000-0000-0002-000000000008'::uuid, '*/15 * * * *', 'UTC', 'paused', '{"environment": "Development"}'::jsonb, false, ARRAY[]::text[], NULL, NOW() - INTERVAL '2 hours', 'success', ARRAY['database', 'monitoring'])
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== SCHEDULE RUNS ====================
+	db.Exec(`
+		INSERT INTO schedule_runs (id, schedule_id, execution_id, status, result, scheduled_at, started_at, completed_at, duration)
+		VALUES
+			('00000000-0000-0000-0006-000000000001'::uuid, '00000000-0000-0000-0005-000000000001'::uuid, '00000000-0000-0000-0003-000000000005'::uuid, 'completed', 'success', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '4 minutes', 60000),
+			('00000000-0000-0000-0006-000000000002'::uuid, '00000000-0000-0000-0005-000000000001'::uuid, NULL, 'completed', 'success', NOW() - INTERVAL '65 minutes', NOW() - INTERVAL '65 minutes', NOW() - INTERVAL '64 minutes', 58000),
+			('00000000-0000-0000-0006-000000000003'::uuid, '00000000-0000-0000-0005-000000000002'::uuid, '00000000-0000-0000-0003-000000000001'::uuid, 'completed', 'success', NOW() - INTERVAL '16 hours', NOW() - INTERVAL '16 hours', NOW() - INTERVAL '16 hours' + INTERVAL '2 minutes', 120000),
+			('00000000-0000-0000-0006-000000000004'::uuid, '00000000-0000-0000-0005-000000000003'::uuid, '00000000-0000-0000-0003-000000000004'::uuid, 'completed', 'failed', NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days' + INTERVAL '5 minutes', 300000)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== MOCK SERVERS ====================
+	db.Exec(`
+		INSERT INTO mocks.mock_servers (id, name, port, base_url, status, started_at)
+		VALUES
+			('00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 9001, 'http://localhost:9001', 'running', NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-0007-000000000002'::uuid, 'User Service Mock', 9002, 'http://localhost:9002', 'running', NOW() - INTERVAL '2 days'),
+			('00000000-0000-0000-0007-000000000003'::uuid, 'Notification Service Mock', 9003, 'http://localhost:9003', 'stopped', NOW() - INTERVAL '3 days')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== MOCK ENDPOINTS ====================
+	db.Exec(`
+		INSERT INTO mocks.mock_endpoints (id, mock_server_id, path, method, response_config, priority)
+		VALUES
+			('00000000-0000-0000-0008-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments', 'POST', '{"status": 200, "body": {"id": "pay_123", "status": "succeeded", "amount": 1000}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments/:id', 'GET', '{"status": 200, "body": {"id": "{{params.id}}", "status": "succeeded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000003'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/refunds', 'POST', '{"status": 200, "body": {"id": "ref_456", "status": "pending"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000004'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users', 'GET', '{"status": 200, "body": [{"id": "user-1", "name": "John Doe"}, {"id": "user-2", "name": "Jane Smith"}], "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000005'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users/:id', 'GET', '{"status": 200, "body": {"id": "{{params.id}}", "name": "Test User"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000006'::uuid, '00000000-0000-0000-0007-000000000003'::uuid, '/api/notifications/email', 'POST', '{"status": 202, "body": {"message_id": "msg_789", "status": "queued"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== MOCK REQUESTS ====================
+	db.Exec(`
+		INSERT INTO mocks.mock_requests (id, mock_server_id, endpoint_id, method, path, headers, body, matched, response_code, received_at)
+		VALUES
+			('00000000-0000-0000-0009-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '00000000-0000-0000-0008-000000000001'::uuid, 'POST', '/api/payments', '{"Content-Type": "application/json"}'::jsonb, '{"amount": 1000, "currency": "usd"}', true, 200, NOW() - INTERVAL '1 hour'),
+			('00000000-0000-0000-0009-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '00000000-0000-0000-0008-000000000002'::uuid, 'GET', '/api/payments/pay_123', '{"Authorization": "Bearer token"}'::jsonb, NULL, true, 200, NOW() - INTERVAL '30 minutes'),
+			('00000000-0000-0000-0009-000000000003'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '00000000-0000-0000-0008-000000000004'::uuid, 'GET', '/api/users', '{}'::jsonb, NULL, true, 200, NOW() - INTERVAL '15 minutes')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== CONTRACTS ====================
+	db.Exec(`
+		INSERT INTO contracts.contracts (id, consumer, provider, version, pact_version, contract_data, flow_id)
+		VALUES
+			('00000000-0000-0000-000a-000000000001'::uuid, 'web-frontend', 'user-service', '1.0.0', '4.0', '{"consumer": {"name": "web-frontend"}, "provider": {"name": "user-service"}, "interactions": []}'::jsonb, '00000000-0000-0000-0002-000000000003'::uuid),
+			('00000000-0000-0000-000a-000000000002'::uuid, 'mobile-app', 'user-service', '1.0.0', '4.0', '{"consumer": {"name": "mobile-app"}, "provider": {"name": "user-service"}, "interactions": []}'::jsonb, NULL),
+			('00000000-0000-0000-000a-000000000003'::uuid, 'order-service', 'payment-gateway', '2.1.0', '4.0', '{"consumer": {"name": "order-service"}, "provider": {"name": "payment-gateway"}, "interactions": []}'::jsonb, '00000000-0000-0000-0002-000000000006'::uuid),
+			('00000000-0000-0000-000a-000000000004'::uuid, 'web-frontend', 'product-service', '1.2.0', '4.0', '{"consumer": {"name": "web-frontend"}, "provider": {"name": "product-service"}, "interactions": []}'::jsonb, '00000000-0000-0000-0002-000000000004'::uuid)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== CONTRACT INTERACTIONS ====================
+	db.Exec(`
+		INSERT INTO contracts.interactions (id, contract_id, description, provider_state, request, response, interaction_type)
+		VALUES
+			('00000000-0000-0000-000b-000000000001'::uuid, '00000000-0000-0000-000a-000000000001'::uuid, 'Get user profile', 'user exists', '{"method": "GET", "path": "/api/users/123"}'::jsonb, '{"status": 200, "body": {"id": "123", "name": "John"}}'::jsonb, 'http'),
+			('00000000-0000-0000-000b-000000000002'::uuid, '00000000-0000-0000-000a-000000000001'::uuid, 'User not found', 'user does not exist', '{"method": "GET", "path": "/api/users/999"}'::jsonb, '{"status": 404, "body": {"error": "Not found"}}'::jsonb, 'http'),
+			('00000000-0000-0000-000b-000000000003'::uuid, '00000000-0000-0000-000a-000000000003'::uuid, 'Process payment', 'valid card', '{"method": "POST", "path": "/api/payments"}'::jsonb, '{"status": 200, "body": {"status": "succeeded"}}'::jsonb, 'http'),
+			('00000000-0000-0000-000b-000000000004'::uuid, '00000000-0000-0000-000a-000000000003'::uuid, 'Payment declined', 'invalid card', '{"method": "POST", "path": "/api/payments"}'::jsonb, '{"status": 400, "body": {"error": "Card declined"}}'::jsonb, 'http')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== CONTRACT VERIFICATIONS ====================
+	db.Exec(`
+		INSERT INTO contracts.verifications (id, contract_id, provider_version, status, verified_at, results)
+		VALUES
+			('00000000-0000-0000-000c-000000000001'::uuid, '00000000-0000-0000-000a-000000000001'::uuid, '1.0.5', 'passed', NOW() - INTERVAL '1 day', '{"total": 2, "passed": 2, "failed": 0, "interactions": [{"description": "Get user profile", "status": "passed"}, {"description": "User not found", "status": "passed"}]}'::jsonb),
+			('00000000-0000-0000-000c-000000000002'::uuid, '00000000-0000-0000-000a-000000000003'::uuid, '2.0.0', 'failed', NOW() - INTERVAL '2 days', '{"total": 2, "passed": 1, "failed": 1, "interactions": [{"description": "Process payment", "status": "passed"}, {"description": "Payment declined", "status": "failed", "error": "Response body mismatch"}]}'::jsonb),
+			('00000000-0000-0000-000c-000000000003'::uuid, '00000000-0000-0000-000a-000000000004'::uuid, '1.2.1', 'passed', NOW() - INTERVAL '6 hours', '{"total": 1, "passed": 1, "failed": 0}'::jsonb)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== REPORTS ====================
+	db.Exec(`
+		INSERT INTO reporting.reports (id, name, format, status, filters, start_date, end_date, file_path, file_size, generated_at)
+		VALUES
+			('00000000-0000-0000-000d-000000000001'::uuid, 'Weekly Test Summary', 'pdf', 'completed', '{"suites": ["smoke", "integration"]}'::jsonb, CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE, '/reports/weekly-summary-2024-01.pdf', 245678, NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-000d-000000000002'::uuid, 'Monthly Analytics Report', 'html', 'completed', '{"environment": "Production"}'::jsonb, CURRENT_DATE - INTERVAL '30 days', CURRENT_DATE, '/reports/monthly-analytics.html', 512000, NOW() - INTERVAL '3 days'),
+			('00000000-0000-0000-000d-000000000003'::uuid, 'Flakiness Analysis', 'json', 'completed', '{}'::jsonb, CURRENT_DATE - INTERVAL '14 days', CURRENT_DATE, '/reports/flakiness.json', 34567, NOW() - INTERVAL '12 hours'),
+			('00000000-0000-0000-000d-000000000004'::uuid, 'Daily Execution Report', 'pdf', 'pending', '{}'::jsonb, CURRENT_DATE - INTERVAL '1 day', CURRENT_DATE, NULL, 0, NULL)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== DAILY METRICS ====================
+	db.Exec(`
+		INSERT INTO reporting.daily_metrics (id, date, environment, total_flows, total_execs, passed_execs, failed_execs, pass_rate, avg_duration_ms, p50_duration_ms, p95_duration_ms, p99_duration_ms, total_steps, passed_steps, failed_steps)
+		VALUES
+			('00000000-0000-0000-000e-000000000001'::uuid, CURRENT_DATE, 'Development', 10, 45, 40, 5, 88.89, 1250, 980, 2500, 4200, 120, 110, 10),
+			('00000000-0000-0000-000e-000000000002'::uuid, CURRENT_DATE - INTERVAL '1 day', 'Development', 10, 52, 48, 4, 92.31, 1180, 920, 2200, 3800, 140, 132, 8),
+			('00000000-0000-0000-000e-000000000003'::uuid, CURRENT_DATE - INTERVAL '2 days', 'Development', 10, 38, 35, 3, 92.11, 1320, 1050, 2800, 4500, 95, 88, 7),
+			('00000000-0000-0000-000e-000000000004'::uuid, CURRENT_DATE, 'Staging', 8, 25, 22, 3, 88.00, 1450, 1100, 3200, 5100, 65, 58, 7),
+			('00000000-0000-0000-000e-000000000005'::uuid, CURRENT_DATE - INTERVAL '1 day', 'Staging', 8, 30, 28, 2, 93.33, 1380, 1050, 2900, 4800, 78, 74, 4),
+			('00000000-0000-0000-000e-000000000006'::uuid, CURRENT_DATE, 'Production', 5, 150, 148, 2, 98.67, 850, 680, 1500, 2200, 375, 372, 3),
+			('00000000-0000-0000-000e-000000000007'::uuid, CURRENT_DATE - INTERVAL '1 day', 'Production', 5, 145, 144, 1, 99.31, 820, 650, 1400, 2000, 360, 358, 2)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== FLAKINESS METRICS ====================
+	db.Exec(`
+		INSERT INTO reporting.flakiness_metrics (id, flow_id, window_start_date, window_end_date, window_days, total_execs, passed_execs, failed_execs, transitions, flakiness_score, is_flaky, failure_patterns)
+		VALUES
+			('00000000-0000-0000-000f-000000000001'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE, 7, 20, 15, 5, 8, 0.4000, true, ARRAY['timeout', 'connection_refused']),
+			('00000000-0000-0000-000f-000000000002'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE, 7, 25, 24, 1, 2, 0.0800, false, ARRAY['assertion_failed']),
+			('00000000-0000-0000-000f-000000000003'::uuid, '00000000-0000-0000-0002-000000000007'::uuid, CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE, 7, 168, 168, 0, 0, 0.0000, false, ARRAY[]::text[])
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== AI GENERATION HISTORY ====================
+	db.Exec(`
+		INSERT INTO ai.generation_history (id, provider, model, prompt, status, generated_yaml, flow_id, tokens_used, latency_ms)
+		VALUES
+			('00000000-0000-0000-0010-000000000001'::uuid, 'anthropic', 'claude-3-opus', 'Generate a test flow for user registration with email validation', 'completed', 'name: User Registration Test\nsteps:\n  - id: register\n    action: http\n    config:\n      method: POST\n      url: "{{base_url}}/api/register"', '00000000-0000-0000-0002-000000000001'::uuid, 1250, 3500),
+			('00000000-0000-0000-0010-000000000002'::uuid, 'openai', 'gpt-4', 'Create API tests for payment processing', 'completed', 'name: Payment Flow\nsteps:\n  - id: create-payment\n    action: http', '00000000-0000-0000-0002-000000000006'::uuid, 980, 2800),
+			('00000000-0000-0000-0010-000000000003'::uuid, 'anthropic', 'claude-3-sonnet', 'Generate database integration tests', 'failed', NULL, NULL, 0, 1200)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== AI SUGGESTIONS ====================
+	db.Exec(`
+		INSERT INTO ai.suggestions (id, flow_id, execution_id, type, status, title, description, confidence, reasoning)
+		VALUES
+			('00000000-0000-0000-0011-000000000001'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, '00000000-0000-0000-0003-000000000004'::uuid, 'fix', 'pending', 'Add retry logic for transient failures', 'The order creation step fails intermittently due to network timeouts. Adding retry logic could improve reliability.', 0.85, 'Analysis of 20 executions shows 15% fail with timeout errors that succeed on manual retry.'),
+			('00000000-0000-0000-0011-000000000002'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, '00000000-0000-0000-0003-000000000004'::uuid, 'optimization', 'accepted', 'Increase timeout for slow endpoints', 'The payment processing endpoint occasionally exceeds the default timeout.', 0.72, 'P95 latency for this endpoint is 4.5 seconds but timeout is set to 3 seconds.'),
+			('00000000-0000-0000-0011-000000000003'::uuid, '00000000-0000-0000-0002-000000000002'::uuid, NULL, 'assertion', 'applied', 'Add token expiry validation', 'The login test should verify the token expiry time is reasonable.', 0.90, 'Security best practice to validate token lifetime.')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== AI IMPORT HISTORY ====================
+	db.Exec(`
+		INSERT INTO ai.import_history (id, source_type, source_name, status, flows_generated, flow_ids)
+		VALUES
+			('00000000-0000-0000-0012-000000000001'::uuid, 'openapi', 'user-service-api.yaml', 'completed', 5, ARRAY['00000000-0000-0000-0002-000000000001', '00000000-0000-0000-0002-000000000002', '00000000-0000-0000-0002-000000000003']),
+			('00000000-0000-0000-0012-000000000002'::uuid, 'postman', 'E-Commerce Collection.json', 'completed', 3, ARRAY['00000000-0000-0000-0002-000000000004', '00000000-0000-0000-0002-000000000005']),
+			('00000000-0000-0000-0012-000000000003'::uuid, 'har', 'browser-session.har', 'failed', 0, ARRAY[]::text[])
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== AI COVERAGE ANALYSIS ====================
+	db.Exec(`
+		INSERT INTO ai.coverage_analysis (id, spec_type, spec_name, status, total_endpoints, covered_endpoints, coverage_percent, results)
+		VALUES
+			('00000000-0000-0000-0013-000000000001'::uuid, 'openapi', 'User Service API v1.0', 'completed', 15, 12, 80.00, '{"covered": ["/users", "/users/{id}", "/auth/login"], "uncovered": ["/users/bulk", "/admin/users", "/auth/refresh"]}'::jsonb),
+			('00000000-0000-0000-0013-000000000002'::uuid, 'openapi', 'Payment Gateway API v2.0', 'completed', 8, 6, 75.00, '{"covered": ["/payments", "/refunds"], "uncovered": ["/disputes", "/webhooks"]}'::jsonb)
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== REQUEST HISTORY ====================
+	db.Exec(`
+		INSERT INTO flows.request_history (id, flow_id, method, url, request, response, status_code, duration_ms, size_bytes, tags)
+		VALUES
+			('00000000-0000-0000-0014-000000000001'::uuid, '00000000-0000-0000-0002-000000000007'::uuid, 'GET', 'http://localhost:8080/health', '{"method": "GET", "url": "http://localhost:8080/health", "headers": {}}'::jsonb, '{"status_code": 200, "status_text": "OK", "body": "{\"status\": \"healthy\"}", "size_bytes": 128, "time_ms": 45}'::jsonb, 200, 45, 128, ARRAY['health', 'smoke']),
+			('00000000-0000-0000-0014-000000000002'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, 'POST', 'http://localhost:8080/api/users/register', '{"method": "POST", "url": "http://localhost:8080/api/users/register", "headers": {"Content-Type": "application/json"}, "body": "{\"email\": \"test@example.com\"}", "body_type": "json"}'::jsonb, '{"status_code": 201, "status_text": "Created", "body": "{\"id\": \"user-123\"}", "size_bytes": 512, "time_ms": 250}'::jsonb, 201, 250, 512, ARRAY['users', 'registration']),
+			('00000000-0000-0000-0014-000000000003'::uuid, '00000000-0000-0000-0002-000000000004'::uuid, 'GET', 'http://localhost:8080/api/products', '{"method": "GET", "url": "http://localhost:8080/api/products", "headers": {}}'::jsonb, '{"status_code": 200, "status_text": "OK", "body": "{\"products\": []}", "size_bytes": 1024, "time_ms": 180}'::jsonb, 200, 180, 1024, ARRAY['products']),
+			('00000000-0000-0000-0014-000000000004'::uuid, NULL, 'POST', 'http://localhost:8080/api/orders', '{"method": "POST", "url": "http://localhost:8080/api/orders", "headers": {"Authorization": "Bearer token"}, "body": "{\"items\": []}", "body_type": "json"}'::jsonb, '{"status_code": 500, "status_text": "Internal Server Error", "body": "{\"error\": \"Internal error\"}", "size_bytes": 256, "time_ms": 3200}'::jsonb, 500, 3200, 256, ARRAY['orders', 'error'])
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== ACTIVITY EVENTS ====================
+	db.Exec(`
+		INSERT INTO activity_events (id, actor_id, actor_name, event_type, resource_type, resource_id, resource_name, description, workspace_id, created_at)
+		VALUES
+			('00000000-0000-0000-0015-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'flow.created', 'flow', '00000000-0000-0000-0002-000000000001'::uuid, 'User Registration', 'Created new flow', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '5 days'),
+			('00000000-0000-0000-0015-000000000002'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'flow.executed', 'flow', '00000000-0000-0000-0002-000000000001'::uuid, 'User Registration', 'Executed flow - Passed', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '2 hours'),
+			('00000000-0000-0000-0015-000000000003'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'schedule.created', 'schedule', '00000000-0000-0000-0005-000000000001'::uuid, 'Hourly Health Check', 'Created schedule', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '3 days'),
+			('00000000-0000-0000-0015-000000000004'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'mock.created', 'mock', '00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 'Created mock server', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-0015-000000000005'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'contract.verified', 'contract', '00000000-0000-0000-000a-000000000001'::uuid, 'web-frontend <> user-service', 'Contract verification passed', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '1 day')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== FLOW COMMENTS ====================
+	db.Exec(`
+		INSERT INTO flow_comments (id, flow_id, step_id, author_id, author_name, content, resolved, created_at)
+		VALUES
+			('00000000-0000-0000-0016-000000000001'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, 'create-order', '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'We should add validation for empty cart before creating order', false, NOW() - INTERVAL '2 days'),
+			('00000000-0000-0000-0016-000000000002'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, NULL, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'This flow needs to be updated for the new API version', false, NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-0016-000000000003'::uuid, '00000000-0000-0000-0002-000000000006'::uuid, 'process-payment', '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'Added retry logic as suggested', true, NOW() - INTERVAL '12 hours')
+		ON CONFLICT (id) DO NOTHING;
+	`)
+
+	// ==================== FLOW VERSIONS ====================
+	db.Exec(`
+		INSERT INTO flow_versions (id, flow_id, version, content, author_id, author_name, message, created_at)
+		VALUES
+			('00000000-0000-0000-0017-000000000001'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, 1, '{"name": "User Registration", "steps": []}', '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'Initial version', NOW() - INTERVAL '5 days'),
+			('00000000-0000-0000-0017-000000000002'::uuid, '00000000-0000-0000-0002-000000000001'::uuid, 2, '{"name": "User Registration", "steps": [{"id": "register"}]}', '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'Added registration step', NOW() - INTERVAL '4 days'),
+			('00000000-0000-0000-0017-000000000003'::uuid, '00000000-0000-0000-0002-000000000005'::uuid, 1, '{"name": "Create Order", "steps": []}', '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'Initial version', NOW() - INTERVAL '3 days')
+		ON CONFLICT (id) DO NOTHING;
+	`)
 }

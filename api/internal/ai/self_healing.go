@@ -44,7 +44,7 @@ func NewSelfHealingEngine(
 }
 
 // AnalyzeFailure analyzes a failed execution and suggests fixes
-func (e *SelfHealingEngine) AnalyzeFailure(ctx context.Context, executionID uuid.UUID) (*SuggestionResult, error) {
+func (e *SelfHealingEngine) AnalyzeFailure(ctx context.Context, executionID uuid.UUID, workspaceID uuid.UUID) (*SuggestionResult, error) {
 	// Fetch execution with details
 	execution, err := e.execRepo.GetByID(executionID)
 	if err != nil {
@@ -56,7 +56,7 @@ func (e *SelfHealingEngine) AnalyzeFailure(ctx context.Context, executionID uuid
 	}
 
 	// Fetch flow
-	flow, err := e.flowRepo.GetByID(execution.FlowID)
+	flow, err := e.flowRepo.GetByID(execution.FlowID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("flow not found: %w", err)
 	}
@@ -159,7 +159,7 @@ func (e *SelfHealingEngine) GetSuggestion(id uuid.UUID) (*models.Suggestion, err
 }
 
 // ApplySuggestion applies an accepted suggestion to the flow
-func (e *SelfHealingEngine) ApplySuggestion(ctx context.Context, suggestionID uuid.UUID) (*ApplyResult, error) {
+func (e *SelfHealingEngine) ApplySuggestion(ctx context.Context, suggestionID uuid.UUID, workspaceID uuid.UUID) (*ApplyResult, error) {
 	// Fetch suggestion
 	var suggestion models.Suggestion
 	if err := e.db.First(&suggestion, "id = ?", suggestionID).Error; err != nil {
@@ -181,7 +181,7 @@ func (e *SelfHealingEngine) ApplySuggestion(ctx context.Context, suggestionID uu
 	}
 
 	// Fetch and update flow
-	flow, err := e.flowRepo.GetByID(suggestion.FlowID)
+	flow, err := e.flowRepo.GetByID(suggestion.FlowID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("flow not found: %w", err)
 	}
@@ -196,7 +196,7 @@ func (e *SelfHealingEngine) ApplySuggestion(ctx context.Context, suggestionID uu
 	flow.Suite = newDefinition.Suite
 	flow.Tags = newDefinition.Tags
 
-	if err := e.flowRepo.Update(flow); err != nil {
+	if err := e.flowRepo.Update(flow, workspaceID); err != nil {
 		return nil, fmt.Errorf("failed to update flow: %w", err)
 	}
 

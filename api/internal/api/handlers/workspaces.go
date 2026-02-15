@@ -103,7 +103,7 @@ func (h *WorkspaceHandler) Create(c *gin.Context) {
 
 // Get handles GET /api/v1/workspaces/:id
 func (h *WorkspaceHandler) Get(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("workspace_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
@@ -168,7 +168,7 @@ func (h *WorkspaceHandler) List(c *gin.Context) {
 
 // Update handles PUT /api/v1/workspaces/:id
 func (h *WorkspaceHandler) Update(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("workspace_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
@@ -208,7 +208,7 @@ func (h *WorkspaceHandler) Update(c *gin.Context) {
 
 // Delete handles DELETE /api/v1/workspaces/:id
 func (h *WorkspaceHandler) Delete(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("workspace_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
@@ -258,7 +258,7 @@ func (h *WorkspaceHandler) GetPersonal(c *gin.Context) {
 
 // ListMembers handles GET /api/v1/workspaces/:id/members
 func (h *WorkspaceHandler) ListMembers(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("workspace_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
@@ -277,7 +277,7 @@ func (h *WorkspaceHandler) ListMembers(c *gin.Context) {
 
 // AddMember handles POST /api/v1/workspaces/:id/members
 func (h *WorkspaceHandler) AddMember(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("workspace_id")
 	workspaceID, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
@@ -309,7 +309,7 @@ func (h *WorkspaceHandler) AddMember(c *gin.Context) {
 
 // UpdateMember handles PUT /api/v1/workspaces/:id/members/:user_id
 func (h *WorkspaceHandler) UpdateMember(c *gin.Context) {
-	workspaceID, err := uuid.Parse(c.Param("id"))
+	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 		return
@@ -345,7 +345,7 @@ func (h *WorkspaceHandler) UpdateMember(c *gin.Context) {
 
 // RemoveMember handles DELETE /api/v1/workspaces/:id/members/:user_id
 func (h *WorkspaceHandler) RemoveMember(c *gin.Context) {
-	workspaceID, err := uuid.Parse(c.Param("id"))
+	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 		return
@@ -370,7 +370,7 @@ func (h *WorkspaceHandler) RemoveMember(c *gin.Context) {
 
 // InviteMember handles POST /api/v1/workspaces/:id/invitations
 func (h *WorkspaceHandler) InviteMember(c *gin.Context) {
-	workspaceID, err := uuid.Parse(c.Param("id"))
+	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 		return
@@ -404,7 +404,7 @@ func (h *WorkspaceHandler) InviteMember(c *gin.Context) {
 
 // ListInvitations handles GET /api/v1/workspaces/:id/invitations
 func (h *WorkspaceHandler) ListInvitations(c *gin.Context) {
-	workspaceID, err := uuid.Parse(c.Param("id"))
+	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 		return
@@ -457,7 +457,7 @@ func (h *WorkspaceHandler) AcceptInvitation(c *gin.Context) {
 
 // GetUserRole handles GET /api/v1/workspaces/:id/role
 func (h *WorkspaceHandler) GetUserRole(c *gin.Context) {
-	workspaceID, err := uuid.Parse(c.Param("id"))
+	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 		return

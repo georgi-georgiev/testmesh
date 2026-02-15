@@ -5,6 +5,7 @@ import { QueryProvider } from "@/lib/providers/query-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { MainLayout } from "@/components/layout";
+import { WorkspaceProvider } from "@/components/workspaces/WorkspaceProvider";
 
 const outfit = Outfit({subsets:['latin'],variable:'--font-sans'});
 
@@ -41,7 +42,9 @@ export default function RootLayout({
         >
           <QueryProvider>
             <AuthProvider>
-              <MainLayout>{children}</MainLayout>
+              <WorkspaceProvider>
+                <MainLayout>{children}</MainLayout>
+              </WorkspaceProvider>
             </AuthProvider>
           </QueryProvider>
         </ThemeProvider>

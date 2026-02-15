@@ -1,3 +1,3 @@
-// Response Viewer Components
-export { default as JsonTreeView } from './JsonTreeView';
-export { default as ResponseTabs } from './ResponseTabs';
+export { default as SQLResultViewer } from './SQLResultViewer';
+export { default as KafkaMessageViewer } from './KafkaMessageViewer';
+export { default as CurlGenerator } from './CurlGenerator';

@@ -15,6 +15,7 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/plugins"
 	"github.com/georgi-georgiev/testmesh/internal/reporting"
 	"github.com/georgi-georgiev/testmesh/internal/runner"
+	"github.com/georgi-georgiev/testmesh/internal/runner/debugger"
 	"github.com/georgi-georgiev/testmesh/internal/scheduler"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"go.uber.org/zap"
@@ -36,6 +37,7 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// Initialize repositories
 	flowRepo := repository.NewFlowRepository(db)
 	executionRepo := repository.NewExecutionRepository(db)
+	envRepo := repository.NewEnvironmentRepository(db)
 	mockRepo := repository.NewMockRepository(db)
 	contractRepo := repository.NewContractRepository(db)
 	reportingRepo := repository.NewReportingRepository(db)
@@ -70,7 +72,7 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
 	flowHandler := handlers.NewFlowHandler(flowRepo, logger)
-	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, mockRepo, contractRepo, logger, wsHub)
+	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, envRepo, mockRepo, contractRepo, logger, wsHub)
 	mockHandler := handlers.NewMockHandler(mockRepo, logger)
 	contractHandler := handlers.NewContractHandler(contractRepo, logger)
 	reportingHandler := handlers.NewReportingHandler(reportingRepo, aggregator, generator, logger)
@@ -80,10 +82,18 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	historyHandler := handlers.NewHistoryHandler(historyRepo, logger)
 	wsHandler := websocket.NewHandler(wsHub, logger)
 
+	// Initialize debug controller
+	debugController := debugger.NewController(logger)
+	debugController.SetEventHandler(wsHub)
+
 	// Initialize collection runner (executor created per-run to support parallel executions)
 	executor := runner.NewExecutor(executionRepo, contractRepo, logger, wsHub, nil)
+	executor.SetDebugController(debugController)
 	collectionRunner := runner.NewCollectionRunner(executor, logger)
-	runnerHandler := handlers.NewRunnerHandler(collectionRunner, flowRepo, logger)
+	runnerHandler := handlers.NewRunnerHandler(collectionRunner, flowRepo, envRepo, logger)
+
+	// Initialize debug handler
+	debugHandler := handlers.NewDebugHandler(debugController, logger)
 
 	// Initialize workspace handler
 	workspaceRepo := repository.NewWorkspaceRepository(db)
@@ -97,7 +107,7 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 
 	// Initialize load test handler
 	loadTester := loadtest.NewLoadTester(logger)
-	loadTestHandler := handlers.NewLoadTestHandler(loadTester, flowRepo, logger)
+	loadTestHandler := handlers.NewLoadTestHandler(loadTester, flowRepo, envRepo, logger)
 
 	// Initialize plugin registry
 	pluginDir := filepath.Join(os.TempDir(), "testmesh", "plugins")
@@ -127,8 +137,6 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	collaborationHandler := handlers.NewCollaborationHandler(collaborationRepo, logger)
 
 	// Initialize environment handler
-	envRepo := repository.NewEnvironmentRepository(db)
-	envRepo.EnsureDefaultExists() // Create default environment if none exists
 	envHandler := handlers.NewEnvironmentHandler(envRepo, logger)
 
 	// Health check
@@ -137,34 +145,54 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
-		// Collection routes
-		collections := v1.Group("/collections")
+		// Workspace-scoped routes (multi-tenant)
+		ws := v1.Group("/workspaces/:workspace_id")
+		ws.Use(middleware.WorkspaceScope(workspaceRepo))
 		{
-			collections.POST("", collectionHandler.Create)
-			collections.GET("", collectionHandler.List)
-			collections.GET("/tree", collectionHandler.GetTree)
-			collections.GET("/search", collectionHandler.Search)
-			collections.GET("/:id", collectionHandler.Get)
-			collections.PUT("/:id", collectionHandler.Update)
-			collections.DELETE("/:id", collectionHandler.Delete)
-			collections.GET("/:id/children", collectionHandler.GetChildren)
-			collections.GET("/:id/flows", collectionHandler.GetFlows)
-			collections.POST("/:id/flows", collectionHandler.AddFlow)
-			collections.DELETE("/:id/flows/:flow_id", collectionHandler.RemoveFlow)
-			collections.GET("/:id/ancestors", collectionHandler.GetAncestors)
-			collections.POST("/:id/move", collectionHandler.Move)
-			collections.POST("/:id/duplicate", collectionHandler.Duplicate)
-			collections.POST("/:id/reorder", collectionHandler.Reorder)
-		}
+			// Collection routes (workspace-scoped)
+			collections := ws.Group("/collections")
+			{
+				collections.POST("", collectionHandler.Create)
+				collections.GET("", collectionHandler.List)
+				collections.GET("/tree", collectionHandler.GetTree)
+				collections.GET("/search", collectionHandler.Search)
+				collections.GET("/:id", collectionHandler.Get)
+				collections.PUT("/:id", collectionHandler.Update)
+				collections.DELETE("/:id", collectionHandler.Delete)
+				collections.GET("/:id/children", collectionHandler.GetChildren)
+				collections.GET("/:id/flows", collectionHandler.GetFlows)
+				collections.POST("/:id/flows", collectionHandler.AddFlow)
+				collections.DELETE("/:id/flows/:flow_id", collectionHandler.RemoveFlow)
+				collections.GET("/:id/ancestors", collectionHandler.GetAncestors)
+				collections.POST("/:id/move", collectionHandler.Move)
+				collections.POST("/:id/duplicate", collectionHandler.Duplicate)
+				collections.POST("/:id/reorder", collectionHandler.Reorder)
+			}
 
-		// Flow routes
-		flows := v1.Group("/flows")
-		{
-			flows.POST("", flowHandler.Create)
-			flows.GET("", flowHandler.List)
-			flows.GET("/:id", flowHandler.Get)
-			flows.PUT("/:id", flowHandler.Update)
-			flows.DELETE("/:id", flowHandler.Delete)
+			// Flow routes (workspace-scoped)
+			flows := ws.Group("/flows")
+			{
+				flows.POST("", flowHandler.Create)
+				flows.GET("", flowHandler.List)
+				flows.GET("/:id", flowHandler.Get)
+				flows.PUT("/:id", flowHandler.Update)
+				flows.DELETE("/:id", flowHandler.Delete)
+			}
+
+			// Environment routes (workspace-scoped)
+			environments := ws.Group("/environments")
+			{
+				environments.GET("", envHandler.List)
+				environments.GET("/default", envHandler.GetDefault)
+				environments.POST("", envHandler.Create)
+				environments.POST("/import", envHandler.Import)
+				environments.GET("/:id", envHandler.Get)
+				environments.PUT("/:id", envHandler.Update)
+				environments.DELETE("/:id", envHandler.Delete)
+				environments.POST("/:id/default", envHandler.SetDefault)
+				environments.POST("/:id/duplicate", envHandler.Duplicate)
+				environments.GET("/:id/export", envHandler.Export)
+			}
 		}
 
 		// Execution routes
@@ -303,24 +331,24 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 			runnerRoutes.POST("/parse-data", runnerHandler.ParseData)
 		}
 
-		// Workspace routes
+		// Workspace routes (use :workspace_id to match scoped routes)
 		workspaces := v1.Group("/workspaces")
 		{
 			workspaces.POST("", workspaceHandler.Create)
 			workspaces.GET("", workspaceHandler.List)
 			workspaces.GET("/personal", workspaceHandler.GetPersonal)
 			workspaces.GET("/slug/:slug", workspaceHandler.GetBySlug)
-			workspaces.GET("/:id", workspaceHandler.Get)
-			workspaces.PUT("/:id", workspaceHandler.Update)
-			workspaces.DELETE("/:id", workspaceHandler.Delete)
-			workspaces.GET("/:id/role", workspaceHandler.GetUserRole)
-			workspaces.GET("/:id/members", workspaceHandler.ListMembers)
-			workspaces.POST("/:id/members", workspaceHandler.AddMember)
-			workspaces.PUT("/:id/members/:user_id", workspaceHandler.UpdateMember)
-			workspaces.DELETE("/:id/members/:user_id", workspaceHandler.RemoveMember)
-			workspaces.GET("/:id/invitations", workspaceHandler.ListInvitations)
-			workspaces.POST("/:id/invitations", workspaceHandler.InviteMember)
-			workspaces.DELETE("/:id/invitations/:invitation_id", workspaceHandler.RevokeInvitation)
+			workspaces.GET("/:workspace_id", workspaceHandler.Get)
+			workspaces.PUT("/:workspace_id", workspaceHandler.Update)
+			workspaces.DELETE("/:workspace_id", workspaceHandler.Delete)
+			workspaces.GET("/:workspace_id/role", workspaceHandler.GetUserRole)
+			workspaces.GET("/:workspace_id/members", workspaceHandler.ListMembers)
+			workspaces.POST("/:workspace_id/members", workspaceHandler.AddMember)
+			workspaces.PUT("/:workspace_id/members/:user_id", workspaceHandler.UpdateMember)
+			workspaces.DELETE("/:workspace_id/members/:user_id", workspaceHandler.RemoveMember)
+			workspaces.GET("/:workspace_id/invitations", workspaceHandler.ListInvitations)
+			workspaces.POST("/:workspace_id/invitations", workspaceHandler.InviteMember)
+			workspaces.DELETE("/:workspace_id/invitations/:invitation_id", workspaceHandler.RevokeInvitation)
 		}
 
 		// Invitation acceptance (outside workspace context)
@@ -386,6 +414,25 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 			schedules.GET("/:id/stats", scheduleHandler.GetStats)
 		}
 
+		// Debug routes
+		debug := v1.Group("/debug")
+		{
+			debug.GET("/sessions", debugHandler.ListSessions)
+			debug.POST("/sessions", debugHandler.StartSession)
+			debug.GET("/sessions/:id", debugHandler.GetSession)
+			debug.DELETE("/sessions/:id", debugHandler.EndSession)
+			debug.GET("/sessions/:id/state", debugHandler.GetState)
+			debug.GET("/sessions/:id/history", debugHandler.GetHistory)
+			debug.GET("/sessions/:id/breakpoints", debugHandler.ListBreakpoints)
+			debug.POST("/sessions/:id/breakpoints", debugHandler.AddBreakpoint)
+			debug.DELETE("/sessions/:id/breakpoints/:breakpoint_id", debugHandler.RemoveBreakpoint)
+			debug.POST("/sessions/:id/breakpoints/:breakpoint_id/toggle", debugHandler.ToggleBreakpoint)
+			debug.POST("/sessions/:id/pause", debugHandler.Pause)
+			debug.POST("/sessions/:id/resume", debugHandler.Resume)
+			debug.POST("/sessions/:id/step-over", debugHandler.StepOver)
+			debug.POST("/sessions/:id/stop", debugHandler.Stop)
+		}
+
 		// Collaboration routes
 		collaboration := v1.Group("/collaboration")
 		{
@@ -414,20 +461,6 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 			collaboration.GET("/activity", collaborationHandler.ListActivity)
 		}
 
-		// Environment routes
-		environments := v1.Group("/environments")
-		{
-			environments.GET("", envHandler.List)
-			environments.GET("/default", envHandler.GetDefault)
-			environments.POST("", envHandler.Create)
-			environments.POST("/import", envHandler.Import)
-			environments.GET("/:id", envHandler.Get)
-			environments.PUT("/:id", envHandler.Update)
-			environments.DELETE("/:id", envHandler.Delete)
-			environments.POST("/:id/default", envHandler.SetDefault)
-			environments.POST("/:id/duplicate", envHandler.Duplicate)
-			environments.GET("/:id/export", envHandler.Export)
-		}
 	}
 
 	// WebSocket routes

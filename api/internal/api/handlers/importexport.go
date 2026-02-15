@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/exporter"
 	"github.com/georgi-georgiev/testmesh/internal/importer"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
@@ -91,6 +92,9 @@ func (h *ImportExportHandler) Import(c *gin.Context) {
 		return
 	}
 
+	// Get workspace ID from context
+	workspaceID := middleware.GetWorkspaceID(c)
+
 	var collectionID *uuid.UUID
 	if req.CollectionID != nil && *req.CollectionID != "" {
 		id, err := uuid.Parse(*req.CollectionID)
@@ -128,7 +132,7 @@ func (h *ImportExportHandler) Import(c *gin.Context) {
 			CollectionID: collectionID,
 		}
 
-		if err := h.flowRepo.Create(flow); err != nil {
+		if err := h.flowRepo.Create(flow, workspaceID); err != nil {
 			errors = append(errors, flowDef.Name+": "+err.Error())
 			continue
 		}
@@ -156,6 +160,9 @@ func (h *ImportExportHandler) Export(c *gin.Context) {
 		return
 	}
 
+	// Get workspace ID from context
+	workspaceID := middleware.GetWorkspaceID(c)
+
 	// Fetch flows
 	var flows []*models.Flow
 	for _, idStr := range req.FlowIDs {
@@ -164,7 +171,7 @@ func (h *ImportExportHandler) Export(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			continue
 		}
@@ -208,6 +215,9 @@ func (h *ImportExportHandler) ExportDownload(c *gin.Context) {
 		format = "testmesh"
 	}
 
+	// Get workspace ID from context
+	workspaceID := middleware.GetWorkspaceID(c)
+
 	// Fetch flows
 	var flows []*models.Flow
 	for _, idStr := range flowIDs {
@@ -216,7 +226,7 @@ func (h *ImportExportHandler) ExportDownload(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			continue
 		}

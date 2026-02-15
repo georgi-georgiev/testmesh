@@ -11,15 +11,16 @@ import (
 
 // Environment represents a named environment with variables
 type Environment struct {
-	ID          uuid.UUID           `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	Name        string              `gorm:"not null;index" json:"name"`
-	Description string              `json:"description"`
-	Color       string              `json:"color"`      // Hex color for UI display
-	IsDefault   bool                `gorm:"default:false" json:"is_default"`
+	ID          uuid.UUID            `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	WorkspaceID uuid.UUID            `gorm:"type:uuid;index;not null" json:"workspace_id"`
+	Name        string               `gorm:"not null;index" json:"name"`
+	Description string               `json:"description"`
+	Color       string               `json:"color"`      // Hex color for UI display
+	IsDefault   bool                 `gorm:"default:false" json:"is_default"`
 	Variables   EnvironmentVariables `gorm:"type:jsonb;default:'[]'" json:"variables"`
-	CreatedAt   time.Time           `json:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt      `gorm:"index" json:"-"`
+	CreatedAt   time.Time            `json:"created_at"`
+	UpdatedAt   time.Time            `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt       `gorm:"index" json:"-"`
 }
 
 // TableName specifies the table name

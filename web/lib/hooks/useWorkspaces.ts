@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
 import {
   listWorkspaces,
   getWorkspace,
@@ -25,6 +26,76 @@ import {
   type WorkspaceRole,
   type AcceptInvitationRequest,
 } from '@/lib/api/workspaces';
+
+// Storage key for active workspace
+const ACTIVE_WORKSPACE_KEY = 'testmesh_active_workspace';
+
+// Get the active workspace ID from localStorage
+export function getActiveWorkspaceId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+}
+
+// Set the active workspace ID in localStorage
+export function setActiveWorkspaceId(id: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, id);
+  // Dispatch custom event for other components to react
+  window.dispatchEvent(new CustomEvent('workspace-changed', { detail: { workspaceId: id } }));
+}
+
+// Clear the active workspace ID
+export function clearActiveWorkspaceId(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+}
+
+// Hook to manage active workspace state
+export function useActiveWorkspace() {
+  const [activeWorkspaceId, setActiveId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Initialize from localStorage on mount
+  useEffect(() => {
+    setActiveId(getActiveWorkspaceId());
+  }, []);
+
+  // Listen for workspace changes from other components
+  useEffect(() => {
+    const handleWorkspaceChange = (event: CustomEvent<{ workspaceId: string }>) => {
+      setActiveId(event.detail.workspaceId);
+    };
+
+    window.addEventListener('workspace-changed', handleWorkspaceChange as EventListener);
+    return () => {
+      window.removeEventListener('workspace-changed', handleWorkspaceChange as EventListener);
+    };
+  }, []);
+
+  // Get workspace details
+  const workspaceQuery = useQuery({
+    queryKey: workspaceKeys.detail(activeWorkspaceId!),
+    queryFn: () => getWorkspace(activeWorkspaceId!),
+    enabled: !!activeWorkspaceId,
+  });
+
+  // Set active workspace with cache invalidation
+  const setActiveWorkspace = useCallback((id: string) => {
+    setActiveWorkspaceId(id);
+    setActiveId(id);
+    // Invalidate workspace-scoped queries when switching
+    queryClient.invalidateQueries({ queryKey: ['flows'] });
+    queryClient.invalidateQueries({ queryKey: ['collections'] });
+    queryClient.invalidateQueries({ queryKey: ['environments'] });
+  }, [queryClient]);
+
+  return {
+    activeWorkspaceId,
+    workspace: workspaceQuery.data,
+    isLoading: workspaceQuery.isLoading,
+    setActiveWorkspace,
+  };
+}
 
 // Query keys
 export const workspaceKeys = {

@@ -16,48 +16,49 @@ func NewCollectionRepository(db *gorm.DB) *CollectionRepository {
 	return &CollectionRepository{db: db}
 }
 
-// Create creates a new collection
-func (r *CollectionRepository) Create(collection *models.Collection) error {
+// Create creates a new collection in the specified workspace
+func (r *CollectionRepository) Create(collection *models.Collection, workspaceID uuid.UUID) error {
+	collection.WorkspaceID = workspaceID
 	return r.db.Create(collection).Error
 }
 
-// GetByID retrieves a collection by ID
-func (r *CollectionRepository) GetByID(id uuid.UUID) (*models.Collection, error) {
+// GetByID retrieves a collection by ID, verifying workspace ownership
+func (r *CollectionRepository) GetByID(id uuid.UUID, workspaceID uuid.UUID) (*models.Collection, error) {
 	var collection models.Collection
-	if err := r.db.First(&collection, "id = ?", id).Error; err != nil {
+	if err := r.db.First(&collection, "id = ? AND workspace_id = ?", id, workspaceID).Error; err != nil {
 		return nil, err
 	}
 	return &collection, nil
 }
 
-// GetByIDWithFlows retrieves a collection with its flows
-func (r *CollectionRepository) GetByIDWithFlows(id uuid.UUID) (*models.Collection, error) {
+// GetByIDWithFlows retrieves a collection with its flows, scoped to workspace
+func (r *CollectionRepository) GetByIDWithFlows(id uuid.UUID, workspaceID uuid.UUID) (*models.Collection, error) {
 	var collection models.Collection
 	if err := r.db.Preload("Flows", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort_order ASC")
-	}).First(&collection, "id = ?", id).Error; err != nil {
+		return db.Where("workspace_id = ?", workspaceID).Order("sort_order ASC")
+	}).First(&collection, "id = ? AND workspace_id = ?", id, workspaceID).Error; err != nil {
 		return nil, err
 	}
 	return &collection, nil
 }
 
-// GetByIDWithChildren retrieves a collection with its children
-func (r *CollectionRepository) GetByIDWithChildren(id uuid.UUID) (*models.Collection, error) {
+// GetByIDWithChildren retrieves a collection with its children, scoped to workspace
+func (r *CollectionRepository) GetByIDWithChildren(id uuid.UUID, workspaceID uuid.UUID) (*models.Collection, error) {
 	var collection models.Collection
 	if err := r.db.Preload("Children", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort_order ASC")
-	}).First(&collection, "id = ?", id).Error; err != nil {
+		return db.Where("workspace_id = ?", workspaceID).Order("sort_order ASC")
+	}).First(&collection, "id = ? AND workspace_id = ?", id, workspaceID).Error; err != nil {
 		return nil, err
 	}
 	return &collection, nil
 }
 
-// List retrieves all root collections (no parent)
-func (r *CollectionRepository) List(limit, offset int) ([]models.Collection, int64, error) {
+// List retrieves all root collections (no parent) in a workspace
+func (r *CollectionRepository) List(workspaceID uuid.UUID, limit, offset int) ([]models.Collection, int64, error) {
 	var collections []models.Collection
 	var total int64
 
-	query := r.db.Model(&models.Collection{}).Where("parent_id IS NULL")
+	query := r.db.Model(&models.Collection{}).Where("workspace_id = ? AND parent_id IS NULL", workspaceID)
 
 	// Get total count
 	if err := query.Count(&total).Error; err != nil {
@@ -72,79 +73,105 @@ func (r *CollectionRepository) List(limit, offset int) ([]models.Collection, int
 	return collections, total, nil
 }
 
-// ListAll retrieves all collections (including nested)
-func (r *CollectionRepository) ListAll() ([]models.Collection, error) {
+// ListAll retrieves all collections (including nested) in a workspace
+func (r *CollectionRepository) ListAll(workspaceID uuid.UUID) ([]models.Collection, error) {
 	var collections []models.Collection
-	if err := r.db.Order("sort_order ASC, created_at DESC").Find(&collections).Error; err != nil {
+	if err := r.db.Where("workspace_id = ?", workspaceID).Order("sort_order ASC, created_at DESC").Find(&collections).Error; err != nil {
 		return nil, err
 	}
 	return collections, nil
 }
 
-// ListChildren retrieves children of a collection
-func (r *CollectionRepository) ListChildren(parentID uuid.UUID) ([]models.Collection, error) {
+// ListChildren retrieves children of a collection within the workspace
+func (r *CollectionRepository) ListChildren(parentID uuid.UUID, workspaceID uuid.UUID) ([]models.Collection, error) {
 	var collections []models.Collection
-	if err := r.db.Where("parent_id = ?", parentID).Order("sort_order ASC").Find(&collections).Error; err != nil {
+	if err := r.db.Where("parent_id = ? AND workspace_id = ?", parentID, workspaceID).Order("sort_order ASC").Find(&collections).Error; err != nil {
 		return nil, err
 	}
 	return collections, nil
 }
 
-// Update updates a collection
-func (r *CollectionRepository) Update(collection *models.Collection) error {
+// Update updates a collection, verifying workspace ownership
+func (r *CollectionRepository) Update(collection *models.Collection, workspaceID uuid.UUID) error {
+	// Verify the collection belongs to the workspace before updating
+	var existing models.Collection
+	if err := r.db.First(&existing, "id = ? AND workspace_id = ?", collection.ID, workspaceID).Error; err != nil {
+		return err
+	}
+	// Ensure workspace_id cannot be changed
+	collection.WorkspaceID = workspaceID
 	return r.db.Save(collection).Error
 }
 
-// Delete deletes a collection (soft delete)
-func (r *CollectionRepository) Delete(id uuid.UUID) error {
-	return r.db.Delete(&models.Collection{}, "id = ?", id).Error
+// Delete deletes a collection (soft delete), verifying workspace ownership
+func (r *CollectionRepository) Delete(id uuid.UUID, workspaceID uuid.UUID) error {
+	result := r.db.Where("id = ? AND workspace_id = ?", id, workspaceID).Delete(&models.Collection{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
-// Move moves a collection to a new parent
-func (r *CollectionRepository) Move(id uuid.UUID, newParentID *uuid.UUID) error {
-	return r.db.Model(&models.Collection{}).Where("id = ?", id).Update("parent_id", newParentID).Error
+// Move moves a collection to a new parent within the same workspace
+func (r *CollectionRepository) Move(id uuid.UUID, newParentID *uuid.UUID, workspaceID uuid.UUID) error {
+	// Verify both collection and new parent belong to the same workspace
+	if newParentID != nil {
+		var parent models.Collection
+		if err := r.db.First(&parent, "id = ? AND workspace_id = ?", *newParentID, workspaceID).Error; err != nil {
+			return err
+		}
+	}
+	return r.db.Model(&models.Collection{}).Where("id = ? AND workspace_id = ?", id, workspaceID).Update("parent_id", newParentID).Error
 }
 
-// Reorder updates the sort order of a collection
-func (r *CollectionRepository) Reorder(id uuid.UUID, sortOrder int) error {
-	return r.db.Model(&models.Collection{}).Where("id = ?", id).Update("sort_order", sortOrder).Error
+// Reorder updates the sort order of a collection within the workspace
+func (r *CollectionRepository) Reorder(id uuid.UUID, sortOrder int, workspaceID uuid.UUID) error {
+	return r.db.Model(&models.Collection{}).Where("id = ? AND workspace_id = ?", id, workspaceID).Update("sort_order", sortOrder).Error
 }
 
-// AddFlow adds a flow to a collection
-func (r *CollectionRepository) AddFlow(collectionID, flowID uuid.UUID) error {
-	return r.db.Model(&models.Flow{}).Where("id = ?", flowID).Update("collection_id", collectionID).Error
+// AddFlow adds a flow to a collection (both must be in the same workspace)
+func (r *CollectionRepository) AddFlow(collectionID, flowID uuid.UUID, workspaceID uuid.UUID) error {
+	// Verify both collection and flow belong to the same workspace
+	var collection models.Collection
+	if err := r.db.First(&collection, "id = ? AND workspace_id = ?", collectionID, workspaceID).Error; err != nil {
+		return err
+	}
+	return r.db.Model(&models.Flow{}).Where("id = ? AND workspace_id = ?", flowID, workspaceID).Update("collection_id", collectionID).Error
 }
 
-// RemoveFlow removes a flow from a collection
-func (r *CollectionRepository) RemoveFlow(flowID uuid.UUID) error {
-	return r.db.Model(&models.Flow{}).Where("id = ?", flowID).Update("collection_id", nil).Error
+// RemoveFlow removes a flow from a collection within the workspace
+func (r *CollectionRepository) RemoveFlow(flowID uuid.UUID, workspaceID uuid.UUID) error {
+	return r.db.Model(&models.Flow{}).Where("id = ? AND workspace_id = ?", flowID, workspaceID).Update("collection_id", nil).Error
 }
 
-// GetFlows retrieves flows in a collection
-func (r *CollectionRepository) GetFlows(collectionID uuid.UUID) ([]models.Flow, error) {
+// GetFlows retrieves flows in a collection within the workspace
+func (r *CollectionRepository) GetFlows(collectionID uuid.UUID, workspaceID uuid.UUID) ([]models.Flow, error) {
 	var flows []models.Flow
-	if err := r.db.Where("collection_id = ?", collectionID).Order("sort_order ASC").Find(&flows).Error; err != nil {
+	if err := r.db.Where("collection_id = ? AND workspace_id = ?", collectionID, workspaceID).Order("sort_order ASC").Find(&flows).Error; err != nil {
 		return nil, err
 	}
 	return flows, nil
 }
 
 // ReorderFlow updates the sort order of a flow within a collection
-func (r *CollectionRepository) ReorderFlow(flowID uuid.UUID, sortOrder int) error {
-	return r.db.Model(&models.Flow{}).Where("id = ?", flowID).Update("sort_order", sortOrder).Error
+func (r *CollectionRepository) ReorderFlow(flowID uuid.UUID, sortOrder int, workspaceID uuid.UUID) error {
+	return r.db.Model(&models.Flow{}).Where("id = ? AND workspace_id = ?", flowID, workspaceID).Update("sort_order", sortOrder).Error
 }
 
-// GetTree builds the full collection tree
-func (r *CollectionRepository) GetTree() ([]models.CollectionTreeNode, error) {
-	// Get all collections
+// GetTree builds the full collection tree for a workspace
+func (r *CollectionRepository) GetTree(workspaceID uuid.UUID) ([]models.CollectionTreeNode, error) {
+	// Get all collections in the workspace
 	var collections []models.Collection
-	if err := r.db.Order("sort_order ASC").Find(&collections).Error; err != nil {
+	if err := r.db.Where("workspace_id = ?", workspaceID).Order("sort_order ASC").Find(&collections).Error; err != nil {
 		return nil, err
 	}
 
-	// Get all flows with collection assignments
+	// Get all flows with collection assignments in the workspace
 	var flows []models.Flow
-	if err := r.db.Where("collection_id IS NOT NULL").Order("sort_order ASC").Find(&flows).Error; err != nil {
+	if err := r.db.Where("workspace_id = ? AND collection_id IS NOT NULL", workspaceID).Order("sort_order ASC").Find(&flows).Error; err != nil {
 		return nil, err
 	}
 
@@ -218,26 +245,26 @@ func buildCollectionNode(collection models.Collection, allCollections []models.C
 	return node
 }
 
-// Search searches collections by name
-func (r *CollectionRepository) Search(query string, limit int) ([]models.Collection, error) {
+// Search searches collections by name within a workspace
+func (r *CollectionRepository) Search(query string, workspaceID uuid.UUID, limit int) ([]models.Collection, error) {
 	var collections []models.Collection
-	if err := r.db.Where("name ILIKE ?", "%"+query+"%").Limit(limit).Find(&collections).Error; err != nil {
+	if err := r.db.Where("workspace_id = ? AND name ILIKE ?", workspaceID, "%"+query+"%").Limit(limit).Find(&collections).Error; err != nil {
 		return nil, err
 	}
 	return collections, nil
 }
 
-// GetAncestors retrieves all ancestors of a collection (for breadcrumb)
-func (r *CollectionRepository) GetAncestors(id uuid.UUID) ([]models.Collection, error) {
+// GetAncestors retrieves all ancestors of a collection (for breadcrumb) within the workspace
+func (r *CollectionRepository) GetAncestors(id uuid.UUID, workspaceID uuid.UUID) ([]models.Collection, error) {
 	var ancestors []models.Collection
 
-	current, err := r.GetByID(id)
+	current, err := r.GetByID(id, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 
 	for current.ParentID != nil {
-		parent, err := r.GetByID(*current.ParentID)
+		parent, err := r.GetByID(*current.ParentID, workspaceID)
 		if err != nil {
 			break
 		}
@@ -248,14 +275,15 @@ func (r *CollectionRepository) GetAncestors(id uuid.UUID) ([]models.Collection, 
 	return ancestors, nil
 }
 
-// Duplicate duplicates a collection with all its contents
-func (r *CollectionRepository) Duplicate(id uuid.UUID, newName string) (*models.Collection, error) {
-	original, err := r.GetByIDWithFlows(id)
+// Duplicate duplicates a collection with all its contents within the same workspace
+func (r *CollectionRepository) Duplicate(id uuid.UUID, newName string, workspaceID uuid.UUID) (*models.Collection, error) {
+	original, err := r.GetByIDWithFlows(id, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 
 	duplicate := &models.Collection{
+		WorkspaceID: workspaceID,
 		Name:        newName,
 		Description: original.Description,
 		Icon:        original.Icon,
@@ -265,7 +293,7 @@ func (r *CollectionRepository) Duplicate(id uuid.UUID, newName string) (*models.
 		Auth:        original.Auth,
 	}
 
-	if err := r.Create(duplicate); err != nil {
+	if err := r.db.Create(duplicate).Error; err != nil {
 		return nil, err
 	}
 
@@ -273,4 +301,13 @@ func (r *CollectionRepository) Duplicate(id uuid.UUID, newName string) (*models.
 	// Flows would need to be duplicated separately if needed
 
 	return duplicate, nil
+}
+
+// CountByWorkspace returns the total number of collections in a workspace
+func (r *CollectionRepository) CountByWorkspace(workspaceID uuid.UUID) (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.Collection{}).Where("workspace_id = ?", workspaceID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

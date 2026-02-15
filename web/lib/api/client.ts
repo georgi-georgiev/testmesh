@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { getStoredToken, clearStoredAuth } from '@/lib/auth/AuthContext';
+import { getActiveWorkspaceId } from '@/lib/hooks/useWorkspaces';
 import type {
   Flow,
   Execution,
@@ -17,6 +18,14 @@ import type {
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5016';
 
+// Paths that should be workspace-scoped
+const WORKSPACE_SCOPED_PATHS = ['/flows', '/collections', '/environments'];
+
+// Check if a path should be workspace-scoped
+const isWorkspaceScopedPath = (url: string): boolean => {
+  return WORKSPACE_SCOPED_PATHS.some(path => url.includes(path) && !url.includes('/workspaces'));
+};
+
 // Create axios instance with default configuration
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
@@ -27,13 +36,25 @@ const createAxiosInstance = (): AxiosInstance => {
     },
   });
 
-  // Request interceptor - inject auth token
+  // Request interceptor - inject auth token and workspace scope
   instance.interceptors.request.use(
     (config) => {
+      // Add auth token
       const token = getStoredToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
+      // Rewrite workspace-scoped paths to include workspace_id
+      const workspaceId = getActiveWorkspaceId();
+      if (workspaceId && config.url && isWorkspaceScopedPath(config.url)) {
+        // Transform /api/v1/flows -> /api/v1/workspaces/{id}/flows
+        config.url = config.url.replace(
+          '/api/v1/',
+          `/api/v1/workspaces/${workspaceId}/`
+        );
+      }
+
       return config;
     },
     (error) => Promise.reject(error)

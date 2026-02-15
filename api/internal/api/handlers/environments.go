@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -42,14 +43,20 @@ type UpdateEnvironmentRequest struct {
 	Variables   *[]models.EnvironmentVariable `json:"variables"`
 }
 
-// List handles GET /api/v1/environments
+// List handles GET /api/v1/workspaces/:workspace_id/environments
 func (h *EnvironmentHandler) List(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	params := &repository.ListEnvironmentsParams{
 		Search: c.Query("search"),
 		Limit:  50, // Default limit
 	}
 
-	environments, total, err := h.repo.List(params)
+	environments, total, err := h.repo.List(workspaceID, params)
 	if err != nil {
 		h.logger.Error("Failed to list environments", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list environments"})
@@ -62,15 +69,21 @@ func (h *EnvironmentHandler) List(c *gin.Context) {
 	})
 }
 
-// Get handles GET /api/v1/environments/:id
+// Get handles GET /api/v1/workspaces/:workspace_id/environments/:id
 func (h *EnvironmentHandler) Get(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
 		return
 	}
 
-	env, err := h.repo.GetByID(id)
+	env, err := h.repo.GetByID(id, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
 		return
@@ -79,9 +92,15 @@ func (h *EnvironmentHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, env)
 }
 
-// GetDefault handles GET /api/v1/environments/default
+// GetDefault handles GET /api/v1/workspaces/:workspace_id/environments/default
 func (h *EnvironmentHandler) GetDefault(c *gin.Context) {
-	env, err := h.repo.GetDefault()
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
+	env, err := h.repo.GetDefault(workspaceID)
 	if err != nil {
 		// Return empty default if none exists
 		c.JSON(http.StatusOK, gin.H{
@@ -95,8 +114,14 @@ func (h *EnvironmentHandler) GetDefault(c *gin.Context) {
 	c.JSON(http.StatusOK, env)
 }
 
-// Create handles POST /api/v1/environments
+// Create handles POST /api/v1/workspaces/:workspace_id/environments
 func (h *EnvironmentHandler) Create(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req CreateEnvironmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -116,7 +141,7 @@ func (h *EnvironmentHandler) Create(c *gin.Context) {
 		Variables:   req.Variables,
 	}
 
-	if err := h.repo.Create(env); err != nil {
+	if err := h.repo.Create(env, workspaceID); err != nil {
 		h.logger.Error("Failed to create environment", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create environment"})
 		return
@@ -124,20 +149,27 @@ func (h *EnvironmentHandler) Create(c *gin.Context) {
 
 	h.logger.Info("Created environment",
 		zap.String("id", env.ID.String()),
-		zap.String("name", env.Name))
+		zap.String("name", env.Name),
+		zap.String("workspace_id", workspaceID.String()))
 
 	c.JSON(http.StatusCreated, env)
 }
 
-// Update handles PUT /api/v1/environments/:id
+// Update handles PUT /api/v1/workspaces/:workspace_id/environments/:id
 func (h *EnvironmentHandler) Update(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
 		return
 	}
 
-	env, err := h.repo.GetByID(id)
+	env, err := h.repo.GetByID(id, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
 		return
@@ -166,7 +198,7 @@ func (h *EnvironmentHandler) Update(c *gin.Context) {
 		env.Variables = *req.Variables
 	}
 
-	if err := h.repo.Update(env); err != nil {
+	if err := h.repo.Update(env, workspaceID); err != nil {
 		h.logger.Error("Failed to update environment", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update environment"})
 		return
@@ -175,15 +207,21 @@ func (h *EnvironmentHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, env)
 }
 
-// Delete handles DELETE /api/v1/environments/:id
+// Delete handles DELETE /api/v1/workspaces/:workspace_id/environments/:id
 func (h *EnvironmentHandler) Delete(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
 		return
 	}
 
-	if err := h.repo.Delete(id); err != nil {
+	if err := h.repo.Delete(id, workspaceID); err != nil {
 		if err.Error() == "cannot delete the default environment" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -196,26 +234,38 @@ func (h *EnvironmentHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Environment deleted"})
 }
 
-// SetDefault handles POST /api/v1/environments/:id/default
+// SetDefault handles POST /api/v1/workspaces/:workspace_id/environments/:id/default
 func (h *EnvironmentHandler) SetDefault(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
 		return
 	}
 
-	if err := h.repo.SetDefault(id); err != nil {
+	if err := h.repo.SetDefault(id, workspaceID); err != nil {
 		h.logger.Error("Failed to set default environment", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set default environment"})
 		return
 	}
 
-	env, _ := h.repo.GetByID(id)
+	env, _ := h.repo.GetByID(id, workspaceID)
 	c.JSON(http.StatusOK, env)
 }
 
-// Duplicate handles POST /api/v1/environments/:id/duplicate
+// Duplicate handles POST /api/v1/workspaces/:workspace_id/environments/:id/duplicate
 func (h *EnvironmentHandler) Duplicate(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
@@ -230,7 +280,7 @@ func (h *EnvironmentHandler) Duplicate(c *gin.Context) {
 		return
 	}
 
-	newEnv, err := h.repo.Duplicate(id, req.Name)
+	newEnv, err := h.repo.Duplicate(id, req.Name, workspaceID)
 	if err != nil {
 		h.logger.Error("Failed to duplicate environment", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to duplicate environment"})
@@ -240,15 +290,21 @@ func (h *EnvironmentHandler) Duplicate(c *gin.Context) {
 	c.JSON(http.StatusCreated, newEnv)
 }
 
-// Export handles GET /api/v1/environments/:id/export
+// Export handles GET /api/v1/workspaces/:workspace_id/environments/:id/export
 func (h *EnvironmentHandler) Export(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
 		return
 	}
 
-	env, err := h.repo.GetByID(id)
+	env, err := h.repo.GetByID(id, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
 		return
@@ -261,8 +317,14 @@ func (h *EnvironmentHandler) Export(c *gin.Context) {
 	c.JSON(http.StatusOK, export)
 }
 
-// Import handles POST /api/v1/environments/import
+// Import handles POST /api/v1/workspaces/:workspace_id/environments/import
 func (h *EnvironmentHandler) Import(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req models.EnvironmentExport
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -276,7 +338,7 @@ func (h *EnvironmentHandler) Import(c *gin.Context) {
 		Color:       "#6B7280", // Default gray
 	}
 
-	if err := h.repo.Create(env); err != nil {
+	if err := h.repo.Create(env, workspaceID); err != nil {
 		h.logger.Error("Failed to import environment", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to import environment"})
 		return

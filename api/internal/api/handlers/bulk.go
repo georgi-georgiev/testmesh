@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -46,19 +47,19 @@ type BulkDeleteRequest struct {
 
 // BulkUpdateRequest represents a request to update multiple flows
 type BulkUpdateRequest struct {
-	FlowIDs []string          `json:"flow_ids" binding:"required"`
+	FlowIDs []string               `json:"flow_ids" binding:"required"`
 	Updates map[string]interface{} `json:"updates" binding:"required"`
 }
 
 // FindReplaceRequest represents a find and replace request
 type FindReplaceRequest struct {
-	FlowIDs     []string `json:"flow_ids"` // Empty means all flows
-	Find        string   `json:"find" binding:"required"`
-	Replace     string   `json:"replace"`
-	MatchCase   bool     `json:"match_case"`
-	WholeWord   bool     `json:"whole_word"`
-	InField     string   `json:"in_field"` // "name", "description", "yaml", or empty for all
-	Preview     bool     `json:"preview"`  // If true, just preview matches
+	FlowIDs   []string `json:"flow_ids"` // Empty means all flows
+	Find      string   `json:"find" binding:"required"`
+	Replace   string   `json:"replace"`
+	MatchCase bool     `json:"match_case"`
+	WholeWord bool     `json:"whole_word"`
+	InField   string   `json:"in_field"` // "name", "description", "yaml", or empty for all
+	Preview   bool     `json:"preview"`  // If true, just preview matches
 }
 
 // BulkResult represents the result of a bulk operation
@@ -69,8 +70,14 @@ type BulkResult struct {
 	Errors    []string `json:"errors,omitempty"`
 }
 
-// AddTags handles POST /api/v1/bulk/flows/tags/add
+// AddTags handles POST /api/v1/workspaces/:workspace_id/bulk/flows/tags/add
 func (h *BulkHandler) AddTags(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -87,7 +94,7 @@ func (h *BulkHandler) AddTags(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Flow not found: "+idStr)
@@ -108,7 +115,7 @@ func (h *BulkHandler) AddTags(c *gin.Context) {
 		}
 		flow.Tags = newTags
 
-		if err := h.flowRepo.Update(flow); err != nil {
+		if err := h.flowRepo.Update(flow, workspaceID); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Failed to update: "+idStr)
 			continue
@@ -120,8 +127,14 @@ func (h *BulkHandler) AddTags(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// RemoveTags handles POST /api/v1/bulk/flows/tags/remove
+// RemoveTags handles POST /api/v1/workspaces/:workspace_id/bulk/flows/tags/remove
 func (h *BulkHandler) RemoveTags(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -142,7 +155,7 @@ func (h *BulkHandler) RemoveTags(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Flow not found: "+idStr)
@@ -158,7 +171,7 @@ func (h *BulkHandler) RemoveTags(c *gin.Context) {
 		}
 		flow.Tags = newTags
 
-		if err := h.flowRepo.Update(flow); err != nil {
+		if err := h.flowRepo.Update(flow, workspaceID); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Failed to update: "+idStr)
 			continue
@@ -170,8 +183,14 @@ func (h *BulkHandler) RemoveTags(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// Move handles POST /api/v1/bulk/flows/move
+// Move handles POST /api/v1/workspaces/:workspace_id/bulk/flows/move
 func (h *BulkHandler) Move(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkMoveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -185,8 +204,8 @@ func (h *BulkHandler) Move(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid collection ID"})
 			return
 		}
-		// Verify collection exists
-		if _, err := h.collectionRepo.GetByID(id); err != nil {
+		// Verify collection exists in workspace
+		if _, err := h.collectionRepo.GetByID(id, workspaceID); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 			return
 		}
@@ -203,7 +222,7 @@ func (h *BulkHandler) Move(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Flow not found: "+idStr)
@@ -212,7 +231,7 @@ func (h *BulkHandler) Move(c *gin.Context) {
 
 		flow.CollectionID = collectionID
 
-		if err := h.flowRepo.Update(flow); err != nil {
+		if err := h.flowRepo.Update(flow, workspaceID); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Failed to update: "+idStr)
 			continue
@@ -224,8 +243,14 @@ func (h *BulkHandler) Move(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// Delete handles POST /api/v1/bulk/flows/delete
+// Delete handles POST /api/v1/workspaces/:workspace_id/bulk/flows/delete
 func (h *BulkHandler) Delete(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkDeleteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -242,7 +267,7 @@ func (h *BulkHandler) Delete(c *gin.Context) {
 			continue
 		}
 
-		if err := h.flowRepo.Delete(id); err != nil {
+		if err := h.flowRepo.Delete(id, workspaceID); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Failed to delete: "+idStr)
 			continue
@@ -254,8 +279,14 @@ func (h *BulkHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// Duplicate handles POST /api/v1/bulk/flows/duplicate
+// Duplicate handles POST /api/v1/workspaces/:workspace_id/bulk/flows/duplicate
 func (h *BulkHandler) Duplicate(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkDeleteRequest // Same structure - just needs flow IDs
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -273,7 +304,7 @@ func (h *BulkHandler) Duplicate(c *gin.Context) {
 			continue
 		}
 
-		original, err := h.flowRepo.GetByID(id)
+		original, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Flow not found: "+idStr)
@@ -285,7 +316,7 @@ func (h *BulkHandler) Duplicate(c *gin.Context) {
 		duplicate.ID = uuid.Nil // Let DB generate new ID
 		duplicate.Name = original.Name + " (Copy)"
 
-		if err := h.flowRepo.Create(&duplicate); err != nil {
+		if err := h.flowRepo.Create(&duplicate, workspaceID); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "Failed to duplicate: "+idStr)
 			continue
@@ -305,8 +336,14 @@ func (h *BulkHandler) Duplicate(c *gin.Context) {
 	})
 }
 
-// Export handles POST /api/v1/bulk/flows/export
+// Export handles POST /api/v1/workspaces/:workspace_id/bulk/flows/export
 func (h *BulkHandler) Export(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req BulkDeleteRequest // Same structure
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -321,7 +358,7 @@ func (h *BulkHandler) Export(c *gin.Context) {
 			continue
 		}
 
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			continue
 		}
@@ -353,8 +390,14 @@ type FindReplaceMatch struct {
 	MatchText string `json:"match_text"`
 }
 
-// FindReplace handles POST /api/v1/bulk/flows/find-replace
+// FindReplace handles POST /api/v1/workspaces/:workspace_id/bulk/flows/find-replace
 func (h *BulkHandler) FindReplace(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req FindReplaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -364,8 +407,8 @@ func (h *BulkHandler) FindReplace(c *gin.Context) {
 	// Get flows to search
 	var flowIDs []uuid.UUID
 	if len(req.FlowIDs) == 0 {
-		// Search all flows
-		flows, _, _ := h.flowRepo.List("", nil, 1000, 0)
+		// Search all flows in workspace
+		flows, _, _ := h.flowRepo.List(workspaceID, "", nil, 1000, 0)
 		for _, f := range flows {
 			flowIDs = append(flowIDs, f.ID)
 		}
@@ -381,7 +424,7 @@ func (h *BulkHandler) FindReplace(c *gin.Context) {
 	result := BulkResult{Total: len(flowIDs)}
 
 	for _, id := range flowIDs {
-		flow, err := h.flowRepo.GetByID(id)
+		flow, err := h.flowRepo.GetByID(id, workspaceID)
 		if err != nil {
 			continue
 		}
@@ -432,7 +475,7 @@ func (h *BulkHandler) FindReplace(c *gin.Context) {
 		}
 
 		if found && !req.Preview {
-			if err := h.flowRepo.Update(flow); err != nil {
+			if err := h.flowRepo.Update(flow, workspaceID); err != nil {
 				result.Failed++
 			} else {
 				result.Succeeded++
@@ -443,9 +486,9 @@ func (h *BulkHandler) FindReplace(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"matches":  matches,
-		"result":   result,
-		"preview":  req.Preview,
+		"matches": matches,
+		"result":  result,
+		"preview": req.Preview,
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/loadtest"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
@@ -17,16 +18,18 @@ import (
 type LoadTestHandler struct {
 	loadTester *loadtest.LoadTester
 	flowRepo   *repository.FlowRepository
+	envRepo    *repository.EnvironmentRepository
 	logger     *zap.Logger
 	// Store running tests
 	runningTests map[uuid.UUID]*loadtest.LoadTestResult
 }
 
 // NewLoadTestHandler creates a new load test handler
-func NewLoadTestHandler(loadTester *loadtest.LoadTester, flowRepo *repository.FlowRepository, logger *zap.Logger) *LoadTestHandler {
+func NewLoadTestHandler(loadTester *loadtest.LoadTester, flowRepo *repository.FlowRepository, envRepo *repository.EnvironmentRepository, logger *zap.Logger) *LoadTestHandler {
 	return &LoadTestHandler{
 		loadTester:   loadTester,
 		flowRepo:     flowRepo,
+		envRepo:      envRepo,
 		logger:       logger,
 		runningTests: make(map[uuid.UUID]*loadtest.LoadTestResult),
 	}
@@ -63,16 +66,22 @@ func (h *LoadTestHandler) Start(c *gin.Context) {
 		flowIDs = append(flowIDs, id)
 	}
 
+	// Get workspace ID from context
+	workspaceID := middleware.GetWorkspaceID(c)
+
 	// Fetch flows
 	var flows []*models.Flow
 	for _, flowID := range flowIDs {
-		flow, err := h.flowRepo.GetByID(flowID)
+		flow, err := h.flowRepo.GetByID(flowID, workspaceID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "flow not found: " + flowID.String()})
 			return
 		}
 		flows = append(flows, flow)
 	}
+
+	// Merge environment variables with runtime variables
+	mergedVars := h.mergeEnvironmentVariables(req.Environment, workspaceID, req.Variables)
 
 	// Build config
 	config := &loadtest.LoadTestConfig{
@@ -82,7 +91,7 @@ func (h *LoadTestHandler) Start(c *gin.Context) {
 		RampUpTime:   time.Duration(req.RampUpSec) * time.Second,
 		RampDownTime: time.Duration(req.RampDownSec) * time.Second,
 		ThinkTime:    time.Duration(req.ThinkTimeMs) * time.Millisecond,
-		Variables:    req.Variables,
+		Variables:    mergedVars,
 		Environment:  req.Environment,
 	}
 
@@ -223,4 +232,49 @@ func (h *LoadTestHandler) GetTimeline(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"timeline": result.Timeline,
 	})
+}
+
+// mergeEnvironmentVariables fetches environment variables and merges them with runtime variables.
+// Priority order (later overrides earlier):
+//   1. Environment variables (from selected environment)
+//   2. Runtime variables (passed at execution time)
+func (h *LoadTestHandler) mergeEnvironmentVariables(environmentRef string, workspaceID uuid.UUID, runtimeVars map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	// Fetch environment if specified
+	if environmentRef != "" {
+		var env *models.Environment
+		var err error
+
+		// Try parsing as UUID first
+		if envID, parseErr := uuid.Parse(environmentRef); parseErr == nil {
+			env, err = h.envRepo.GetByID(envID, workspaceID)
+		} else {
+			// Fall back to name lookup
+			env, err = h.envRepo.GetByName(environmentRef, workspaceID)
+		}
+
+		if err != nil {
+			h.logger.Warn("Failed to fetch environment",
+				zap.String("environment", environmentRef),
+				zap.Error(err))
+		} else if env != nil {
+			// Add enabled environment variables
+			for _, v := range env.Variables {
+				if v.Enabled {
+					merged[v.Key] = v.Value
+				}
+			}
+			h.logger.Debug("Loaded environment variables",
+				zap.String("environment", env.Name),
+				zap.Int("variable_count", len(env.Variables)))
+		}
+	}
+
+	// Override with runtime variables (higher priority)
+	for k, v := range runtimeVars {
+		merged[k] = v
+	}
+
+	return merged
 }

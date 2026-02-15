@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -25,8 +26,14 @@ func NewFlowHandler(repo *repository.FlowRepository, logger *zap.Logger) *FlowHa
 	}
 }
 
-// Create handles POST /api/v1/flows
+// Create handles POST /api/v1/workspaces/:workspace_id/flows
 func (h *FlowHandler) Create(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	var req struct {
 		YAML string `json:"yaml" binding:"required"`
 	}
@@ -53,7 +60,7 @@ func (h *FlowHandler) Create(c *gin.Context) {
 		Environment: "default",
 	}
 
-	if err := h.repo.Create(flow); err != nil {
+	if err := h.repo.Create(flow, workspaceID); err != nil {
 		h.logger.Error("Failed to create flow", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create flow"})
 		return
@@ -62,14 +69,20 @@ func (h *FlowHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, flow)
 }
 
-// List handles GET /api/v1/flows
+// List handles GET /api/v1/workspaces/:workspace_id/flows
 func (h *FlowHandler) List(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	suite := c.Query("suite")
 	tags := c.QueryArray("tags")
 	limit := 20
 	offset := 0
 
-	flows, total, err := h.repo.List(suite, tags, limit, offset)
+	flows, total, err := h.repo.List(workspaceID, suite, tags, limit, offset)
 	if err != nil {
 		h.logger.Error("Failed to list flows", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list flows"})
@@ -77,22 +90,28 @@ func (h *FlowHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"flows": flows,
-		"total": total,
-		"limit": limit,
+		"flows":  flows,
+		"total":  total,
+		"limit":  limit,
 		"offset": offset,
 	})
 }
 
-// Get handles GET /api/v1/flows/:id
+// Get handles GET /api/v1/workspaces/:workspace_id/flows/:id
 func (h *FlowHandler) Get(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow ID"})
 		return
 	}
 
-	flow, err := h.repo.GetByID(id)
+	flow, err := h.repo.GetByID(id, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
 		return
@@ -101,15 +120,21 @@ func (h *FlowHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, flow)
 }
 
-// Update handles PUT /api/v1/flows/:id
+// Update handles PUT /api/v1/workspaces/:workspace_id/flows/:id
 func (h *FlowHandler) Update(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow ID"})
 		return
 	}
 
-	flow, err := h.repo.GetByID(id)
+	flow, err := h.repo.GetByID(id, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
 		return
@@ -138,7 +163,7 @@ func (h *FlowHandler) Update(c *gin.Context) {
 	flow.Tags = definition.Tags
 	flow.Definition = definition
 
-	if err := h.repo.Update(flow); err != nil {
+	if err := h.repo.Update(flow, workspaceID); err != nil {
 		h.logger.Error("Failed to update flow", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update flow"})
 		return
@@ -147,15 +172,21 @@ func (h *FlowHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, flow)
 }
 
-// Delete handles DELETE /api/v1/flows/:id
+// Delete handles DELETE /api/v1/workspaces/:workspace_id/flows/:id
 func (h *FlowHandler) Delete(c *gin.Context) {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workspace context required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow ID"})
 		return
 	}
 
-	if err := h.repo.Delete(id); err != nil {
+	if err := h.repo.Delete(id, workspaceID); err != nil {
 		h.logger.Error("Failed to delete flow", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete flow"})
 		return

@@ -12,6 +12,7 @@ import (
 // Collection represents a group of flows organized together
 type Collection struct {
 	ID          uuid.UUID           `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	WorkspaceID uuid.UUID           `gorm:"type:uuid;index;not null" json:"workspace_id"`
 	Name        string              `gorm:"not null;index" json:"name"`
 	Description string              `json:"description"`
 	Icon        string              `json:"icon"`              // Emoji or icon identifier
