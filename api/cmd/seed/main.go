@@ -84,6 +84,9 @@ func main() {
 	// Phase 9: History
 	seedRequestHistory(db)
 
+	// Phase 10: Collaboration/Activity
+	seedActivityEvents(db)
+
 	log.Println("✅ Database seeding completed successfully!")
 	printSummary()
 }
@@ -93,6 +96,10 @@ func clearData(db *gorm.DB) {
 
 	// Delete in reverse dependency order
 	tables := []string{
+		"activity_events",
+		"flow_comments",
+		"flow_versions",
+		"user_presences",
 		"flows.request_history",
 		"schedule_runs",
 		"schedules",
@@ -1419,14 +1426,14 @@ func seedSchedules(db *gorm.DB) {
 			Status:          s.status,
 			NotifyOnFailure: true,
 			NotifyOnSuccess: false,
-			NotifyEmails:    []string{"team@testmesh.io", "oncall@testmesh.io"},
+			NotifyEmails:    models.StringArray{"team@testmesh.io", "oncall@testmesh.io"},
 			MaxRetries:      2,
 			RetryDelay:      "5m",
 			NextRunAt:       &nextRun,
 			LastRunAt:       &lastRun,
 			LastRunID:       lastRunID,
 			LastRunResult:   []string{"success", "failure", "success"}[rand.Intn(3)],
-			Tags:            []string{"automated", "scheduled"},
+			Tags:            models.StringArray{"automated", "scheduled"},
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
 		}
@@ -1585,6 +1592,141 @@ func getStatusText(code int) string {
 }
 
 // ============================================================================
+// PHASE 10: Activity Events
+// ============================================================================
+
+func seedActivityEvents(db *gorm.DB) {
+	log.Println("📢 Seeding activity events...")
+
+	actorNames := []string{"Alice Chen", "Bob Smith", "Carol Johnson", "David Lee", "Emma Wilson"}
+	actorAvatars := []string{
+		"https://api.dicebear.com/7.x/avataaars/svg?seed=Alice",
+		"https://api.dicebear.com/7.x/avataaars/svg?seed=Bob",
+		"https://api.dicebear.com/7.x/avataaars/svg?seed=Carol",
+		"https://api.dicebear.com/7.x/avataaars/svg?seed=David",
+		"https://api.dicebear.com/7.x/avataaars/svg?seed=Emma",
+	}
+
+	eventTypes := []struct {
+		eventType    string
+		resourceType string
+		description  string
+	}{
+		{models.EventTypeFlowCreated, "flow", "created a new flow"},
+		{models.EventTypeFlowUpdated, "flow", "updated the flow"},
+		{models.EventTypeFlowDeleted, "flow", "deleted the flow"},
+		{models.EventTypeExecutionStarted, "execution", "started test execution"},
+		{models.EventTypeExecutionCompleted, "execution", "completed test execution"},
+		{models.EventTypeExecutionFailed, "execution", "execution failed"},
+		{models.EventTypeCommentAdded, "comment", "added a comment"},
+		{models.EventTypeCommentResolved, "comment", "resolved a comment"},
+		{models.EventTypeCollectionCreated, "collection", "created a new collection"},
+		{models.EventTypeCollectionUpdated, "collection", "updated the collection"},
+	}
+
+	// Create 30 activity events spread over the last 7 days
+	for i := 0; i < 30; i++ {
+		actorIdx := rand.Intn(len(actorNames))
+		eventIdx := rand.Intn(len(eventTypes))
+		event := eventTypes[eventIdx]
+
+		// Get a resource ID based on type
+		var resourceID uuid.UUID
+		var resourceName string
+
+		switch event.resourceType {
+		case "flow":
+			if len(flows) > 0 {
+				flow := flows[rand.Intn(len(flows))]
+				resourceID = flow.ID
+				resourceName = flow.Name
+			} else {
+				resourceID = uuid.New()
+				resourceName = "Sample Flow"
+			}
+		case "execution":
+			if len(executions) > 0 {
+				exec := executions[rand.Intn(len(executions))]
+				resourceID = exec.ID
+				if len(flows) > 0 {
+					for _, f := range flows {
+						if f.ID == exec.FlowID {
+							resourceName = f.Name + " execution"
+							break
+						}
+					}
+				}
+			} else {
+				resourceID = uuid.New()
+				resourceName = "Test Execution"
+			}
+		case "collection":
+			if len(collections) > 0 {
+				col := collections[rand.Intn(len(collections))]
+				resourceID = col.ID
+				resourceName = col.Name
+			} else {
+				resourceID = uuid.New()
+				resourceName = "Sample Collection"
+			}
+		case "comment":
+			if len(flows) > 0 {
+				flow := flows[rand.Intn(len(flows))]
+				resourceID = flow.ID
+				resourceName = flow.Name
+			} else {
+				resourceID = uuid.New()
+				resourceName = "Sample Flow"
+			}
+		default:
+			resourceID = uuid.New()
+			resourceName = "Unknown Resource"
+		}
+
+		actorID := uuid.New()
+		createdAt := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
+
+		activity := models.ActivityEvent{
+			ID:           uuid.New(),
+			ActorID:      actorID,
+			ActorName:    actorNames[actorIdx],
+			ActorAvatar:  actorAvatars[actorIdx],
+			EventType:    event.eventType,
+			ResourceType: event.resourceType,
+			ResourceID:   resourceID,
+			ResourceName: resourceName,
+			Description:  fmt.Sprintf("%s %s", actorNames[actorIdx], event.description),
+			CreatedAt:    createdAt,
+		}
+
+		// Add some metadata for certain event types
+		if event.eventType == models.EventTypeFlowUpdated {
+			activity.Changes = models.JSONMap{
+				"fields": []string{"name", "description", "steps"},
+			}
+		}
+		if event.eventType == models.EventTypeExecutionCompleted {
+			activity.Metadata = models.JSONMap{
+				"duration_ms": rand.Intn(30000) + 1000,
+				"passed":      rand.Intn(10) + 1,
+				"failed":      rand.Intn(3),
+			}
+		}
+		if event.eventType == models.EventTypeExecutionFailed {
+			activity.Metadata = models.JSONMap{
+				"error": "Assertion failed: expected status 200",
+			}
+		}
+
+		if err := db.Create(&activity).Error; err != nil {
+			log.Printf("Failed to create activity event: %v", err)
+		}
+	}
+
+	log.Println("  Created 30 activity events")
+}
+
+// ============================================================================
 // Summary
 // ============================================================================
 
@@ -1609,6 +1751,7 @@ func printSummary() {
 ║  Coverage Analysis:   3                                    ║
 ║  AI Usage Stats:      120 (30 days × 4 models)             ║
 ║  Request History:     20                                   ║
+║  Activity Events:     30                                   ║
 ╚════════════════════════════════════════════════════════════╝
 `
 	fmt.Println(summary)

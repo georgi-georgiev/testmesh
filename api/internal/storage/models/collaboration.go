@@ -1,11 +1,50 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// JSONMap is a map type that can be scanned from JSONB
+type JSONMap map[string]interface{}
+
+// Scan implements the sql.Scanner interface for JSONMap
+func (j *JSONMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = make(JSONMap)
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("failed to scan JSONMap: unsupported type")
+	}
+
+	if len(bytes) == 0 {
+		*j = make(JSONMap)
+		return nil
+	}
+
+	return json.Unmarshal(bytes, j)
+}
+
+// Value implements the driver.Valuer interface for JSONMap
+func (j JSONMap) Value() (driver.Value, error) {
+	if j == nil {
+		return "{}", nil
+	}
+	return json.Marshal(j)
+}
 
 // UserPresence represents a user's presence in a resource
 type UserPresence struct {
@@ -55,7 +94,7 @@ type FlowComment struct {
 	Resolved bool   `gorm:"default:false" json:"resolved"`
 
 	// Metadata
-	Position map[string]interface{} `gorm:"type:jsonb" json:"position,omitempty"` // For inline comments
+	Position JSONMap `gorm:"type:jsonb" json:"position,omitempty"` // For inline comments
 
 	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
@@ -91,9 +130,9 @@ type ActivityEvent struct {
 	ResourceName string    `json:"resource_name,omitempty"`
 
 	// Details
-	Description string                 `json:"description,omitempty"`
-	Changes     map[string]interface{} `gorm:"type:jsonb" json:"changes,omitempty"`
-	Metadata    map[string]interface{} `gorm:"type:jsonb" json:"metadata,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Changes     JSONMap `gorm:"type:jsonb" json:"changes,omitempty"`
+	Metadata    JSONMap `gorm:"type:jsonb" json:"metadata,omitempty"`
 
 	// Workspace scoping
 	WorkspaceID *uuid.UUID `gorm:"type:uuid;index" json:"workspace_id,omitempty"`

@@ -542,7 +542,7 @@ func AutoMigrate(db *gorm.DB) error {
 			environment JSONB DEFAULT '{}',
 			notify_on_failure BOOLEAN DEFAULT false,
 			notify_on_success BOOLEAN DEFAULT false,
-			notify_emails JSONB DEFAULT '[]',
+			notify_emails TEXT[] DEFAULT '{}',
 			max_retries INTEGER DEFAULT 0,
 			retry_delay VARCHAR(20) DEFAULT '1m',
 			allow_overlap BOOLEAN DEFAULT false,
@@ -550,7 +550,7 @@ func AutoMigrate(db *gorm.DB) error {
 			last_run_at TIMESTAMP WITH TIME ZONE,
 			last_run_id UUID,
 			last_run_result VARCHAR(20),
-			tags JSONB DEFAULT '[]',
+			tags TEXT[] DEFAULT '{}',
 			created_by UUID,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -558,6 +558,27 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_schedules_flow_id ON schedules(flow_id);
 		CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules(status);
 		CREATE INDEX IF NOT EXISTS idx_schedules_next_run_at ON schedules(next_run_at);
+	`)
+
+	// Migrate existing jsonb columns to text[] (idempotent)
+	db.Exec(`
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'schedules' AND column_name = 'notify_emails' AND data_type = 'jsonb'
+			) THEN
+				ALTER TABLE schedules DROP COLUMN notify_emails;
+				ALTER TABLE schedules ADD COLUMN notify_emails TEXT[] DEFAULT '{}';
+			END IF;
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'schedules' AND column_name = 'tags' AND data_type = 'jsonb'
+			) THEN
+				ALTER TABLE schedules DROP COLUMN tags;
+				ALTER TABLE schedules ADD COLUMN tags TEXT[] DEFAULT '{}';
+			END IF;
+		END $$;
 	`)
 
 	// Create schedule_runs table
@@ -617,6 +638,152 @@ func AutoMigrate(db *gorm.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_collection_items_collection_id ON flows.collection_items(collection_id);
 		CREATE INDEX IF NOT EXISTS idx_collection_items_flow_id ON flows.collection_items(flow_id);
+	`)
+
+	// Create workspaces table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS workspaces (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			slug VARCHAR(255) NOT NULL UNIQUE,
+			description TEXT,
+			type VARCHAR(20) NOT NULL DEFAULT 'personal',
+			owner_id UUID,
+			settings JSONB DEFAULT '{}',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_owner_id ON workspaces(owner_id);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_deleted_at ON workspaces(deleted_at);
+	`)
+
+	// Create workspace_members table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS workspace_members (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+			user_id UUID NOT NULL,
+			email VARCHAR(255),
+			name VARCHAR(255),
+			role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+			invited_by UUID,
+			invited_at TIMESTAMP WITH TIME ZONE,
+			joined_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_id ON workspace_members(workspace_id);
+		CREATE INDEX IF NOT EXISTS idx_workspace_members_user_id ON workspace_members(user_id);
+		CREATE INDEX IF NOT EXISTS idx_workspace_members_email ON workspace_members(email);
+	`)
+
+	// Create workspace_invitations table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS workspace_invitations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+			email VARCHAR(255) NOT NULL,
+			role VARCHAR(20) NOT NULL,
+			token VARCHAR(255) NOT NULL UNIQUE,
+			invited_by UUID NOT NULL,
+			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace_id ON workspace_invitations(workspace_id);
+		CREATE INDEX IF NOT EXISTS idx_workspace_invitations_email ON workspace_invitations(email);
+		CREATE INDEX IF NOT EXISTS idx_workspace_invitations_token ON workspace_invitations(token);
+	`)
+
+	// Create collaboration schema
+	db.Exec(`CREATE SCHEMA IF NOT EXISTS collaboration`)
+
+	// Create user_presences table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_presences (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL,
+			user_name VARCHAR(255) NOT NULL,
+			user_email VARCHAR(255),
+			user_avatar VARCHAR(500),
+			color VARCHAR(20) NOT NULL,
+			resource_type VARCHAR(50) NOT NULL,
+			resource_id UUID NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'viewing',
+			cursor_data JSONB,
+			last_active_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			connected_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_user_presences_user_id ON user_presences(user_id);
+		CREATE INDEX IF NOT EXISTS idx_user_presences_resource ON user_presences(resource_type, resource_id);
+		CREATE INDEX IF NOT EXISTS idx_user_presences_last_active ON user_presences(last_active_at);
+	`)
+
+	// Create flow_comments table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flow_comments (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID NOT NULL,
+			step_id VARCHAR(255),
+			parent_id UUID REFERENCES flow_comments(id),
+			author_id UUID NOT NULL,
+			author_name VARCHAR(255) NOT NULL,
+			author_avatar VARCHAR(500),
+			content TEXT NOT NULL,
+			resolved BOOLEAN DEFAULT false,
+			position JSONB,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_flow_comments_flow_id ON flow_comments(flow_id);
+		CREATE INDEX IF NOT EXISTS idx_flow_comments_step_id ON flow_comments(step_id);
+		CREATE INDEX IF NOT EXISTS idx_flow_comments_parent_id ON flow_comments(parent_id);
+		CREATE INDEX IF NOT EXISTS idx_flow_comments_deleted_at ON flow_comments(deleted_at);
+	`)
+
+	// Create activity_events table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS activity_events (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			actor_id UUID,
+			actor_name VARCHAR(255) NOT NULL,
+			actor_avatar VARCHAR(500),
+			event_type VARCHAR(100) NOT NULL,
+			resource_type VARCHAR(50) NOT NULL,
+			resource_id UUID NOT NULL,
+			resource_name VARCHAR(255),
+			description TEXT,
+			changes JSONB,
+			metadata JSONB,
+			workspace_id UUID,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_activity_events_actor_id ON activity_events(actor_id);
+		CREATE INDEX IF NOT EXISTS idx_activity_events_event_type ON activity_events(event_type);
+		CREATE INDEX IF NOT EXISTS idx_activity_events_resource ON activity_events(resource_type, resource_id);
+		CREATE INDEX IF NOT EXISTS idx_activity_events_workspace_id ON activity_events(workspace_id);
+		CREATE INDEX IF NOT EXISTS idx_activity_events_created_at ON activity_events(created_at);
+	`)
+
+	// Create flow_versions table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS flow_versions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			flow_id UUID NOT NULL,
+			version INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			author_id UUID,
+			author_name VARCHAR(255),
+			message VARCHAR(500),
+			description TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_flow_versions_flow_id ON flow_versions(flow_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_versions_flow_version ON flow_versions(flow_id, version);
 	`)
 
 	return nil

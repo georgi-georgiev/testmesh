@@ -28,10 +28,10 @@ type Schedule struct {
 	Status      ScheduleStatus `gorm:"type:varchar(20);not null;default:'active'" json:"status"`
 
 	// Execution settings
-	Environment     map[string]interface{} `gorm:"type:jsonb;default:'{}'" json:"environment,omitempty"`
-	NotifyOnFailure bool                   `gorm:"default:false" json:"notify_on_failure"`
-	NotifyOnSuccess bool                   `gorm:"default:false" json:"notify_on_success"`
-	NotifyEmails    []string               `gorm:"type:jsonb;default:'[]'" json:"notify_emails,omitempty"`
+	Environment     map[string]interface{} `gorm:"type:jsonb;serializer:json;default:'{}'" json:"environment,omitempty"`
+	NotifyOnFailure bool        `gorm:"default:false" json:"notify_on_failure"`
+	NotifyOnSuccess bool        `gorm:"default:false" json:"notify_on_success"`
+	NotifyEmails    StringArray `gorm:"type:text[]" json:"notify_emails,omitempty"`
 	MaxRetries      int                    `gorm:"default:0" json:"max_retries"`
 	RetryDelay      string                 `gorm:"default:'1m'" json:"retry_delay"`
 
@@ -45,7 +45,7 @@ type Schedule struct {
 	LastRunResult string   `json:"last_run_result,omitempty"` // "success", "failure", "skipped"
 
 	// Metadata
-	Tags      []string  `gorm:"type:jsonb;default:'[]'" json:"tags,omitempty"`
+	Tags      StringArray `gorm:"type:text[]" json:"tags,omitempty"`
 	CreatedBy uuid.UUID `gorm:"type:uuid" json:"created_by"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`

@@ -116,10 +116,15 @@ type VirtualUser struct {
 	totalTime int64 // Total response time in ms
 }
 
-// Run executes a load test
+// Run executes a load test with an auto-generated ID
 func (lt *LoadTester) Run(ctx context.Context, config *LoadTestConfig, flows []*models.Flow, progressFn func(*LoadTestResult)) (*LoadTestResult, error) {
+	return lt.RunWithID(ctx, uuid.New(), config, flows, progressFn)
+}
+
+// RunWithID executes a load test with a provided ID
+func (lt *LoadTester) RunWithID(ctx context.Context, testID uuid.UUID, config *LoadTestConfig, flows []*models.Flow, progressFn func(*LoadTestResult)) (*LoadTestResult, error) {
 	result := &LoadTestResult{
-		ID:        uuid.New(),
+		ID:        testID,
 		Status:    "running",
 		StartedAt: time.Now(),
 		Timeline:  make([]TimelinePoint, 0),

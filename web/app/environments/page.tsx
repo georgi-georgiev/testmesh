@@ -388,7 +388,7 @@ export default function EnvironmentsPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingEnv ? 'Edit Environment' : 'Create Environment'}
@@ -455,9 +455,9 @@ export default function EnvironmentsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-8"></TableHead>
-                      <TableHead>Key</TableHead>
-                      <TableHead>Value</TableHead>
+                      <TableHead className="w-12">Enabled</TableHead>
+                      <TableHead className="w-[40%]">Key</TableHead>
+                      <TableHead className="w-[40%]">Value</TableHead>
                       <TableHead className="w-20">Secret</TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
@@ -473,21 +473,21 @@ export default function EnvironmentsPage() {
                             }
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="min-w-[200px]">
                           <Input
                             placeholder="KEY"
-                            className="font-mono text-sm"
+                            className="font-mono text-sm w-full"
                             value={variable.key}
                             onChange={(e) =>
                               updateVariable(index, 'key', e.target.value)
                             }
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="min-w-[300px]">
                           <Input
                             placeholder="value"
                             type={variable.is_secret ? 'password' : 'text'}
-                            className="font-mono text-sm"
+                            className="font-mono text-sm w-full"
                             value={variable.value}
                             onChange={(e) =>
                               updateVariable(index, 'value', e.target.value)

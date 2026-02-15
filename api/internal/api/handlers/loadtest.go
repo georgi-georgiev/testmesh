@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -90,20 +91,38 @@ func (h *LoadTestHandler) Start(c *gin.Context) {
 		config.RampUpTime = 10 * time.Second
 	}
 
+	// Create test ID upfront so we can return it immediately
+	testID := uuid.New()
+
+	// Create initial result entry so the client can query it immediately
+	initialResult := &loadtest.LoadTestResult{
+		ID:        testID,
+		Status:    "starting",
+		StartedAt: time.Now(),
+		Metrics:   loadtest.LoadTestMetrics{},
+		Timeline:  make([]loadtest.TimelinePoint, 0),
+	}
+	h.runningTests[testID] = initialResult
+
 	// Start load test in background
 	go func() {
-		ctx := c.Request.Context()
-		result, err := h.loadTester.Run(ctx, config, flows, func(progress *loadtest.LoadTestResult) {
-			h.runningTests[progress.ID] = progress
+		ctx := context.Background() // Use background context since request context may be cancelled
+		result, err := h.loadTester.RunWithID(ctx, testID, config, flows, func(progress *loadtest.LoadTestResult) {
+			h.runningTests[testID] = progress
 		})
 		if err != nil {
 			h.logger.Error("Load test failed", zap.Error(err))
+			// Update status to failed
+			if r, ok := h.runningTests[testID]; ok {
+				r.Status = "failed"
+			}
 		}
-		h.runningTests[result.ID] = result
+		if result != nil {
+			h.runningTests[testID] = result
+		}
 	}()
 
 	// Return immediately with test ID
-	testID := uuid.New()
 	c.JSON(http.StatusAccepted, gin.H{
 		"id":      testID,
 		"status":  "starting",

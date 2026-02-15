@@ -1,6 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +41,31 @@ type WorkspaceSettings struct {
 	Variables          map[string]string `json:"variables,omitempty"`
 	AllowPublicSharing bool              `json:"allow_public_sharing,omitempty"`
 	RequireApproval    bool              `json:"require_approval,omitempty"`
+}
+
+// Scan implements the sql.Scanner interface for WorkspaceSettings
+func (ws *WorkspaceSettings) Scan(value interface{}) error {
+	if value == nil {
+		*ws = WorkspaceSettings{}
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("failed to scan WorkspaceSettings: unsupported type")
+	}
+
+	return json.Unmarshal(bytes, ws)
+}
+
+// Value implements the driver.Valuer interface for WorkspaceSettings
+func (ws WorkspaceSettings) Value() (driver.Value, error) {
+	return json.Marshal(ws)
 }
 
 // WorkspaceMember represents a user's membership in a workspace

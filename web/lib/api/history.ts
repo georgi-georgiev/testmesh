@@ -86,7 +86,7 @@ export async function createHistory(data: {
   flow_id?: string;
   collection_id?: string;
 }): Promise<RequestHistory> {
-  const response = await apiClient.post('/history', data);
+  const response = await apiClient.post('/api/v1/history', data);
   return response.data;
 }
 
@@ -110,40 +110,40 @@ export async function listHistory(
     if (filter.tags?.length) params.tags = filter.tags;
   }
 
-  const response = await apiClient.get('/history', { params });
+  const response = await apiClient.get('/api/v1/history', { params });
   return response.data;
 }
 
 // Get single history entry
 export async function getHistory(id: string): Promise<RequestHistory> {
-  const response = await apiClient.get(`/history/${id}`);
+  const response = await apiClient.get(`/api/v1/history/${id}`);
   return response.data;
 }
 
 // Get history stats
 export async function getHistoryStats(): Promise<HistoryStats> {
-  const response = await apiClient.get('/history/stats');
+  const response = await apiClient.get('/api/v1/history/stats');
   return response.data;
 }
 
 // Save history entry (mark as saved)
 export async function saveHistory(id: string): Promise<void> {
-  await apiClient.post(`/history/${id}/save`);
+  await apiClient.post(`/api/v1/history/${id}/save`);
 }
 
 // Unsave history entry
 export async function unsaveHistory(id: string): Promise<void> {
-  await apiClient.post(`/history/${id}/unsave`);
+  await apiClient.post(`/api/v1/history/${id}/unsave`);
 }
 
 // Delete history entry
 export async function deleteHistory(id: string): Promise<void> {
-  await apiClient.delete(`/history/${id}`);
+  await apiClient.delete(`/api/v1/history/${id}`);
 }
 
 // Clear all history
 export async function clearHistory(keepSaved = true): Promise<{ deleted: number }> {
-  const response = await apiClient.delete('/history', {
+  const response = await apiClient.delete('/api/v1/history', {
     params: { keep_saved: keepSaved ? 'true' : 'false' },
   });
   return response.data;
@@ -151,10 +151,10 @@ export async function clearHistory(keepSaved = true): Promise<{ deleted: number 
 
 // Add tag to history entry
 export async function addHistoryTag(id: string, tag: string): Promise<void> {
-  await apiClient.post(`/history/${id}/tags`, { tag });
+  await apiClient.post(`/api/v1/history/${id}/tags`, { tag });
 }
 
 // Remove tag from history entry
 export async function removeHistoryTag(id: string, tag: string): Promise<void> {
-  await apiClient.delete(`/history/${id}/tags/${encodeURIComponent(tag)}`);
+  await apiClient.delete(`/api/v1/history/${id}/tags/${encodeURIComponent(tag)}`);
 }

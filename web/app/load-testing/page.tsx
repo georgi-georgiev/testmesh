@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Zap,
   Play,
@@ -51,9 +51,16 @@ export default function LoadTestingPage() {
   // Queries & mutations
   const { data: flowsData, isLoading: isLoadingFlows } = useFlows();
   const { data: loadTestsData } = useLoadTests();
-  const { data: activeTest, isLoading: isLoadingTest } = useLoadTest(activeTestId || undefined, {
+  const { data: activeTest, isLoading: isLoadingTest, error: loadTestError } = useLoadTest(activeTestId || undefined, {
     refetchInterval: activeTestId ? 1000 : undefined,
   });
+
+  // Clear activeTestId if the test no longer exists (404 error)
+  useEffect(() => {
+    if (loadTestError && activeTestId) {
+      setActiveTestId(null);
+    }
+  }, [loadTestError, activeTestId]);
 
   const startLoadTest = useStartLoadTest();
   const stopLoadTest = useStopLoadTest();
