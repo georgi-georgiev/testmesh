@@ -86,21 +86,15 @@ func generateReport(cmd *cobra.Command, args []string) error {
 
 	// Generate report
 	var report []byte
-	var ext string
-
 	switch strings.ToLower(reportFormat) {
 	case "html":
 		report = generateHTMLReport(execution)
-		ext = ".html"
 	case "json":
 		report, _ = json.MarshalIndent(execution, "", "  ")
-		ext = ".json"
 	case "markdown":
 		report = generateMarkdownReport(execution)
-		ext = ".md"
 	case "junit":
 		report = generateJUnitReport(execution)
-		ext = ".xml"
 	default:
 		return fmt.Errorf("unsupported format: %s", reportFormat)
 	}
