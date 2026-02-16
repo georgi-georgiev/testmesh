@@ -307,8 +307,8 @@ export default function AdminDashboard() {
 
       {/* Quick Links */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="hover:bg-muted/50 transition-colors cursor-pointer" asChild>
-          <Link href="/admin/users">
+        <Link href="/admin/users">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" />
@@ -316,11 +316,11 @@ export default function AdminDashboard() {
               </div>
               <CardDescription>Manage users, roles, and permissions</CardDescription>
             </CardHeader>
-          </Link>
-        </Card>
+          </Card>
+        </Link>
 
-        <Card className="hover:bg-muted/50 transition-colors cursor-pointer" asChild>
-          <Link href="/admin/health">
+        <Link href="/admin/health">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-green-500" />
@@ -328,11 +328,11 @@ export default function AdminDashboard() {
               </div>
               <CardDescription>Monitor services and resources</CardDescription>
             </CardHeader>
-          </Link>
-        </Card>
+          </Card>
+        </Link>
 
-        <Card className="hover:bg-muted/50 transition-colors cursor-pointer" asChild>
-          <Link href="/schedules">
+        <Link href="/schedules">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-purple-500" />
@@ -342,8 +342,8 @@ export default function AdminDashboard() {
                 {stats?.activeSchedules} active, {stats?.queuedJobs} queued
               </CardDescription>
             </CardHeader>
-          </Link>
-        </Card>
+          </Card>
+        </Link>
       </div>
     </div>
   );

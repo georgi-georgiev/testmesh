@@ -340,92 +340,75 @@ export default function KafkaStepForm({
           Advanced Options
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-3 space-y-3 pt-3 border-t">
-          {/* SASL Authentication */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium">SASL Authentication</Label>
-            <Select
-              value={(config.sasl_mechanism as string) || 'none'}
-              onValueChange={(v) => onChange('sasl_mechanism', v === 'none' ? undefined : v)}
-            >
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue placeholder="No authentication" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none" className="text-xs">No authentication</SelectItem>
-                <SelectItem value="PLAIN" className="text-xs">PLAIN</SelectItem>
-                <SelectItem value="SCRAM-SHA-256" className="text-xs">SCRAM-SHA-256</SelectItem>
-                <SelectItem value="SCRAM-SHA-512" className="text-xs">SCRAM-SHA-512</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="space-y-3">
+            {config.sasl_mechanism && config.sasl_mechanism !== 'none' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Username</Label>
+                  <VariablePicker
+                    value={(config.sasl_username as string) || ''}
+                    onChange={(v) => onChange('sasl_username', v)}
+                    placeholder="username"
+                    variables={variables}
+                    stepOutputs={stepOutputs}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Password</Label>
+                  <VariablePicker
+                    value={(config.sasl_password as string) || ''}
+                    onChange={(v) => onChange('sasl_password', v)}
+                    placeholder="password"
+                    variables={variables}
+                    stepOutputs={stepOutputs}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {/* TLS */}
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(config.tls as boolean) || false}
+                onCheckedChange={(checked) => onChange('tls', checked)}
+              />
+              <Label className="text-xs">Enable TLS/SSL</Label>
+            </div>
+
+            {config.tls ? (
+              <div className="space-y-2 pl-6">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={(config.tls_skip_verify as boolean) || false}
+                    onCheckedChange={(checked) => onChange('tls_skip_verify', checked)}
+                  />
+                  <Label className="text-xs">Skip certificate verification</Label>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Compression */}
+            {action === 'produce' ? (
+              <div className="space-y-2">
+                <Label className="text-xs">Compression</Label>
+                <Select
+                  value={(config.compression as string) || 'none'}
+                  onValueChange={(v) => onChange('compression', v === 'none' ? undefined : v)}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" className="text-xs">None</SelectItem>
+                    <SelectItem value="gzip" className="text-xs">GZIP</SelectItem>
+                    <SelectItem value="snappy" className="text-xs">Snappy</SelectItem>
+                    <SelectItem value="lz4" className="text-xs">LZ4</SelectItem>
+                    <SelectItem value="zstd" className="text-xs">ZSTD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
-
-          {config.sasl_mechanism && config.sasl_mechanism !== 'none' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Username</Label>
-                <VariablePicker
-                  value={(config.sasl_username as string) || ''}
-                  onChange={(v) => onChange('sasl_username', v)}
-                  placeholder="username"
-                  variables={variables}
-                  stepOutputs={stepOutputs}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Password</Label>
-                <VariablePicker
-                  value={(config.sasl_password as string) || ''}
-                  onChange={(v) => onChange('sasl_password', v)}
-                  placeholder="password"
-                  variables={variables}
-                  stepOutputs={stepOutputs}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* TLS */}
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={(config.tls as boolean) || false}
-              onCheckedChange={(checked) => onChange('tls', checked)}
-            />
-            <Label className="text-xs">Enable TLS/SSL</Label>
-          </div>
-
-          {config.tls && (
-            <div className="space-y-2 pl-6">
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={(config.tls_skip_verify as boolean) || false}
-                  onCheckedChange={(checked) => onChange('tls_skip_verify', checked)}
-                />
-                <Label className="text-xs">Skip certificate verification</Label>
-              </div>
-            </div>
-          )}
-
-          {/* Compression */}
-          {action === 'produce' && (
-            <div className="space-y-2">
-              <Label className="text-xs">Compression</Label>
-              <Select
-                value={(config.compression as string) || 'none'}
-                onValueChange={(v) => onChange('compression', v === 'none' ? undefined : v)}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" className="text-xs">None</SelectItem>
-                  <SelectItem value="gzip" className="text-xs">GZIP</SelectItem>
-                  <SelectItem value="snappy" className="text-xs">Snappy</SelectItem>
-                  <SelectItem value="lz4" className="text-xs">LZ4</SelectItem>
-                  <SelectItem value="zstd" className="text-xs">ZSTD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </CollapsibleContent>
       </Collapsible>
     </div>
