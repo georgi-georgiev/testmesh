@@ -1,0 +1,152 @@
+# Default values for testmesh
+replicaCount:
+  api: 2
+  web: 2
+
+image:
+  api:
+    repository: testmesh/api
+    tag: latest
+    pullPolicy: IfNotPresent
+  web:
+    repository: testmesh/web
+    tag: latest
+    pullPolicy: IfNotPresent
+  agent:
+    repository: testmesh/agent
+    tag: latest
+    pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  api:
+    type: ClusterIP
+    port: 5016
+    wsPort: 5017
+  web:
+    type: ClusterIP
+    port: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "testmesh-api"
+  hosts:
+    - host: testmesh.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /ws
+          pathType: Prefix
+          service: api
+        - path: /
+          pathType: Prefix
+          service: web
+  tls: []
+
+resources:
+  api:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  web:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# API configuration
+api:
+  logLevel: info
+  maxConcurrentExecutions: 10
+  executionTimeout: 300s
+  scheduler:
+    enabled: true
+  plugins:
+    enabled: true
+    path: /plugins
+
+# Database configuration
+database:
+  # Use external database
+  external:
+    enabled: false
+    url: ""
+  # Or use bundled PostgreSQL
+  postgresql:
+    enabled: true
+    auth:
+      postgresPassword: testmesh
+      username: testmesh
+      password: testmesh
+      database: testmesh
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: false
+
+# Agent configuration
+agent:
+  enabled: false
+  daemonset: true
+  tags:
+    - kubernetes
+
+# Secrets
+secrets:
+  jwtSecret: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  agentToken: ""
+
+# Persistence
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+# Monitoring
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s

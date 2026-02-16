@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: testmesh-agent
+  labels:
+    app: testmesh
+    component: agent
+spec:
+  selector:
+    matchLabels:
+      app: testmesh
+      component: agent
+  template:
+    metadata:
+      labels:
+        app: testmesh
+        component: agent
+    spec:
+      serviceAccountName: testmesh-agent
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      containers:
+        - name: agent
+          image: testmesh/agent:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TESTMESH_API_URL
+              value: "http://testmesh-api:5016"
+            - name: TESTMESH_AGENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TESTMESH_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: testmesh-agent-secrets
+                  key: agent-token
+            - name: TESTMESH_AGENT_TAGS
+              value: "kubernetes,node"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+              readOnly: true
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: testmesh-agent
+  labels:
+    app: testmesh
+    component: agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: testmesh-agent
+  labels:
+    app: testmesh
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: testmesh-agent
+  labels:
+    app: testmesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: testmesh-agent
+subjects:
+  - kind: ServiceAccount
+    name: testmesh-agent
+    namespace: default

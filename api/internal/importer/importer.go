@@ -20,88 +20,14 @@ type ImportResult struct {
 
 // ImportStats contains statistics about the import
 type ImportStats struct {
-	TotalRequests  int `json:"total_requests"`
+	TotalRequests   int `json:"total_requests"`
 	SuccessfulFlows int `json:"successful_flows"`
 	SkippedRequests int `json:"skipped_requests"`
 }
 
-// HARLog represents the root of a HAR file
-type HARLog struct {
-	Log struct {
-		Version string      `json:"version"`
-		Creator struct {
-			Name    string `json:"name"`
-			Version string `json:"version"`
-		} `json:"creator"`
-		Entries []HAREntry `json:"entries"`
-	} `json:"log"`
-}
-
-// HAREntry represents a single request/response pair in a HAR file
-type HAREntry struct {
-	StartedDateTime string `json:"startedDateTime"`
-	Time            float64 `json:"time"`
-	Request         HARRequest  `json:"request"`
-	Response        HARResponse `json:"response"`
-	ServerIPAddress string `json:"serverIPAddress,omitempty"`
-	Comment         string `json:"comment,omitempty"`
-}
-
-// HARRequest represents a request in HAR format
-type HARRequest struct {
-	Method      string       `json:"method"`
-	URL         string       `json:"url"`
-	HTTPVersion string       `json:"httpVersion"`
-	Headers     []HARHeader  `json:"headers"`
-	QueryString []HARParam   `json:"queryString"`
-	PostData    *HARPostData `json:"postData,omitempty"`
-	HeadersSize int          `json:"headersSize"`
-	BodySize    int          `json:"bodySize"`
-}
-
-// HARResponse represents a response in HAR format
-type HARResponse struct {
-	Status      int         `json:"status"`
-	StatusText  string      `json:"statusText"`
-	HTTPVersion string      `json:"httpVersion"`
-	Headers     []HARHeader `json:"headers"`
-	Content     HARContent  `json:"content"`
-	RedirectURL string      `json:"redirectURL"`
-	HeadersSize int         `json:"headersSize"`
-	BodySize    int         `json:"bodySize"`
-}
-
-// HARHeader represents a header in HAR format
-type HARHeader struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// HARParam represents a query parameter in HAR format
-type HARParam struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// HARPostData represents POST data in HAR format
-type HARPostData struct {
-	MimeType string     `json:"mimeType"`
-	Text     string     `json:"text,omitempty"`
-	Params   []HARParam `json:"params,omitempty"`
-}
-
-// HARContent represents response content in HAR format
-type HARContent struct {
-	Size        int    `json:"size"`
-	MimeType    string `json:"mimeType"`
-	Text        string `json:"text,omitempty"`
-	Encoding    string `json:"encoding,omitempty"`
-	Compression int    `json:"compression,omitempty"`
-}
-
 // ParseHAR parses a HAR file and converts it to flow definitions
 func ParseHAR(content string) (*ImportResult, error) {
-	var har HARLog
+	var har HARFile
 	if err := json.Unmarshal([]byte(content), &har); err != nil {
 		return nil, fmt.Errorf("failed to parse HAR: %w", err)
 	}
@@ -206,7 +132,7 @@ func harEntryToFlow(entry HAREntry, index int) (*models.FlowDefinition, error) {
 
 	return &models.FlowDefinition{
 		Name:        name,
-		Description: fmt.Sprintf("Imported from HAR - %s", entry.Comment),
+		Description: fmt.Sprintf("Imported from HAR - %s", entry.Request.URL),
 		Steps:       []models.Step{step},
 	}, nil
 }
