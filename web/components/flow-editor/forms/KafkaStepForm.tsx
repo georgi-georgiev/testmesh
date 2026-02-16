@@ -341,7 +341,7 @@ export default function KafkaStepForm({
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-3 space-y-3 pt-3 border-t">
           <div className="space-y-3">
-            {config.sasl_mechanism && config.sasl_mechanism !== 'none' ? (
+            {(config.sasl_mechanism as string) && config.sasl_mechanism !== 'none' ? (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Username</Label>

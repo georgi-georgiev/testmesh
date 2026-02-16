@@ -368,7 +368,7 @@ return { total, count: input.items.length };`}
         <div className="text-xs text-muted-foreground">
           Access the transformed data using:{' '}
           <code className="font-mono">${'{'}
-            {config.output_var || 'output_var'}
+            {(config.output_var as string) || 'output_var'}
           {'}'}</code>
         </div>
       </div>

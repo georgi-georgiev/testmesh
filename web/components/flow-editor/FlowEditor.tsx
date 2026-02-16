@@ -13,19 +13,31 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle2,
+  Sparkles,
+  Search,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { FlowDefinition } from '@/lib/api/types';
 import type { FlowNode, FlowNodeData, PaletteItem } from './types';
-import { flowDefinitionToYaml } from './utils';
+import { flowDefinitionToYaml, flowDefinitionToNodesAndEdges, nodesAndEdgesToFlowDefinition } from './utils';
+import { applyAutoLayout } from './layout';
 
 import FlowCanvas from './FlowCanvas';
 import NodePalette from './NodePalette';
 import PropertiesPanel from './PropertiesPanel';
+import SearchPanel from './SearchPanel';
+import ValidationPanel from './ValidationPanel';
+import FlowConfigDialog from './FlowConfigDialog';
+import ExportDialog from './ExportDialog';
+import TemplatesDialog from './TemplatesDialog';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
+import { validateFlow, type ValidationResult } from './validation';
 
 interface FlowEditorProps {
   initialDefinition?: FlowDefinition;
@@ -50,7 +62,7 @@ function parseYaml(yaml: string): FlowDefinition | null {
       steps: [],
     };
 
-    let currentSection: 'root' | 'env' | 'setup' | 'steps' | 'teardown' = 'root';
+    let currentSection: 'root' | 'env' | 'default_retry' | 'setup' | 'steps' | 'teardown' = 'root';
     let currentStep: any = null;
     let currentKey = '';
 
@@ -101,6 +113,19 @@ function parseYaml(yaml: string): FlowDefinition | null {
               currentSection = 'env';
               definition.env = {};
               break;
+            case 'default_timeout':
+              (definition as any).default_timeout = value.replace(/^["']|["']$/g, '');
+              break;
+            case 'default_retry':
+              (definition as any).default_retry = {};
+              currentSection = 'default_retry' as any;
+              break;
+            case 'fail_fast':
+              (definition as any).fail_fast = value === 'true';
+              break;
+            case 'continue_on_error':
+              (definition as any).continue_on_error = value === 'true';
+              break;
             case 'setup':
               currentSection = 'setup';
               definition.setup = [];
@@ -117,6 +142,16 @@ function parseYaml(yaml: string): FlowDefinition | null {
         } else if (currentSection === 'env' && lineIndent === 2) {
           definition.env = definition.env || {};
           definition.env[key] = value.replace(/^["']|["']$/g, '');
+        } else if (currentSection === 'default_retry' && lineIndent === 2) {
+          const defAny = definition as any;
+          defAny.default_retry = defAny.default_retry || {};
+          if (key === 'max_attempts') {
+            defAny.default_retry.max_attempts = parseInt(value);
+          } else if (key === 'delay') {
+            defAny.default_retry.delay = value.replace(/^["']|["']$/g, '');
+          } else if (key === 'backoff') {
+            defAny.default_retry.backoff = value.replace(/^["']|["']$/g, '');
+          }
         } else if (currentStep && ['setup', 'steps', 'teardown'].includes(currentSection)) {
           // Step properties
           if (key === 'config') {
@@ -212,7 +247,11 @@ export default function FlowEditor({
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [showPalette, setShowPalette] = useState(true);
   const [showProperties, setShowProperties] = useState(true);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   // History for undo/redo
   const [history, setHistory] = useState<FlowDefinition[]>([]);
@@ -224,6 +263,54 @@ export default function FlowEditor({
       setYaml(flowDefinitionToYaml(definition));
     }
   }, [mode]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore shortcuts when typing in inputs/textareas
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // ?: Show keyboard shortcuts (works anywhere)
+      if (e.key === '?' && !isInput) {
+        e.preventDefault();
+        setShowShortcuts(true);
+        return;
+      }
+
+      // Cmd/Ctrl+F: Toggle search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && mode === 'visual' && !isInput) {
+        e.preventDefault();
+        setShowSearch((prev) => !prev);
+      }
+
+      // Escape: Close search or shortcuts
+      if (e.key === 'Escape') {
+        if (showShortcuts) {
+          setShowShortcuts(false);
+        } else if (showSearch) {
+          setShowSearch(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mode, showSearch, showShortcuts]);
+
+  // Auto-validate flow when definition changes
+  useEffect(() => {
+    if (mode === 'visual' && definition) {
+      const { nodes } = flowDefinitionToNodesAndEdges(definition);
+      const result = validateFlow(definition, nodes);
+      setValidationResult(result);
+
+      // Auto-show validation panel if there are errors
+      if (!result.valid && result.errorCount > 0) {
+        setShowValidation(true);
+      }
+    }
+  }, [definition, mode]);
 
   // Handle mode switch
   const handleModeChange = useCallback((newMode: string) => {
@@ -399,6 +486,49 @@ export default function FlowEditor({
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
 
+  // Handle template application
+  const handleApplyTemplate = useCallback((templateDefinition: FlowDefinition) => {
+    setDefinition(templateDefinition);
+    setIsDirty(true);
+
+    // Add to history
+    setHistory((prev) => [...prev.slice(0, historyIndex + 1), templateDefinition]);
+    setHistoryIndex((prev) => prev + 1);
+  }, [historyIndex]);
+
+  // Handle auto-layout
+  const handleAutoLayout = useCallback(() => {
+    if (mode !== 'visual') return;
+
+    // Convert current definition to nodes and edges
+    const { nodes, edges } = flowDefinitionToNodesAndEdges(definition);
+
+    // Filter out section headers
+    const flowNodes = nodes.filter((n) => n.type === 'flowNode');
+
+    if (flowNodes.length === 0) return;
+
+    // Apply auto-layout
+    const layoutedNodes = applyAutoLayout(flowNodes, edges);
+
+    // Merge back with section headers
+    const allNodes = [
+      ...nodes.filter((n) => n.type === 'sectionHeader'),
+      ...layoutedNodes,
+    ];
+
+    // Convert back to definition
+    const layoutedDefinition = nodesAndEdgesToFlowDefinition(allNodes as FlowNode[], edges, definition);
+
+    // Update definition
+    setDefinition(layoutedDefinition);
+    setIsDirty(true);
+
+    // Add to history
+    setHistory((prev) => [...prev.slice(0, historyIndex + 1), layoutedDefinition]);
+    setHistoryIndex((prev) => prev + 1);
+  }, [mode, definition, historyIndex]);
+
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
       {/* Toolbar */}
@@ -417,6 +547,22 @@ export default function FlowEditor({
               </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <div className="w-px h-6 bg-border mx-2" />
+
+          {/* Templates */}
+          <TemplatesDialog onApplyTemplate={handleApplyTemplate} />
+
+          <div className="w-px h-6 bg-border mx-2" />
+
+          {/* Flow Settings */}
+          <FlowConfigDialog
+            definition={definition}
+            onChange={(newDef) => {
+              setDefinition(newDef);
+              setIsDirty(true);
+            }}
+          />
 
           <div className="w-px h-6 bg-border mx-2" />
 
@@ -444,6 +590,33 @@ export default function FlowEditor({
           {mode === 'visual' && (
             <>
               <div className="w-px h-6 bg-border mx-2" />
+
+              {/* Auto Layout Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAutoLayout}
+                className="h-8 text-xs gap-1.5"
+                title="Automatically arrange nodes"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Auto Layout
+              </Button>
+
+              {/* Search Button */}
+              <Button
+                variant={showSearch ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setShowSearch(!showSearch)}
+                className="h-8 text-xs gap-1.5"
+                title="Search nodes (Cmd/Ctrl+F)"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Search
+              </Button>
+
+              <div className="w-px h-6 bg-border mx-2" />
+
               <Button
                 variant={showPalette ? 'secondary' : 'ghost'}
                 size="sm"
@@ -461,6 +634,36 @@ export default function FlowEditor({
               >
                 Properties
                 <ChevronRight className={cn('w-4 h-4 ml-1 transition-transform', !showProperties && 'rotate-180')} />
+              </Button>
+
+              <Button
+                variant={showValidation ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setShowValidation(!showValidation)}
+                className={cn(
+                  'h-8 text-xs gap-1.5',
+                  validationResult && !validationResult.valid && 'text-red-500 hover:text-red-600'
+                )}
+                title={
+                  validationResult
+                    ? `${validationResult.errorCount} errors, ${validationResult.warningCount} warnings`
+                    : 'Show validation'
+                }
+              >
+                {validationResult && !validationResult.valid ? (
+                  <AlertCircle className="w-3.5 h-3.5" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                Validation
+                {validationResult && (validationResult.errorCount > 0 || validationResult.warningCount > 0) && (
+                  <Badge
+                    variant={validationResult.errorCount > 0 ? 'destructive' : 'secondary'}
+                    className="h-4 text-[10px] px-1 ml-0.5"
+                  >
+                    {validationResult.errorCount + validationResult.warningCount}
+                  </Badge>
+                )}
               </Button>
             </>
           )}
@@ -486,6 +689,22 @@ export default function FlowEditor({
           {isDirty && (
             <span className="text-xs text-muted-foreground">Unsaved changes</span>
           )}
+
+          {/* Export Dialog */}
+          <ExportDialog definition={mode === 'visual' ? definition : parseYaml(yaml) || definition} />
+
+          {/* Help Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowShortcuts(true)}
+            className="h-8 w-8 p-0"
+            title="Keyboard shortcuts (?)"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </Button>
+
+          <div className="w-px h-6 bg-border" />
 
           <Button
             variant="outline"
@@ -535,6 +754,27 @@ export default function FlowEditor({
             {/* Node Palette */}
             {showPalette && <NodePalette />}
 
+            {/* Search Panel */}
+            {showSearch && (
+              <div className="w-80 border-r">
+                <SearchPanel
+                  nodes={(() => {
+                    const { nodes } = flowDefinitionToNodesAndEdges(definition);
+                    return nodes;
+                  })()}
+                  onNodeSelect={(nodeId) => {
+                    const { nodes } = flowDefinitionToNodesAndEdges(definition);
+                    const node = nodes.find((n) => n.id === nodeId);
+                    if (node) {
+                      handleNodeSelect(node);
+                      // Optionally focus the canvas on the selected node
+                    }
+                  }}
+                  onClose={() => setShowSearch(false)}
+                />
+              </div>
+            )}
+
             {/* Canvas */}
             <div className="flex-1 relative">
               <FlowCanvas
@@ -553,6 +793,22 @@ export default function FlowEditor({
                 onClose={() => setShowProperties(false)}
               />
             )}
+
+            {/* Validation Panel */}
+            {showValidation && validationResult && (
+              <ValidationPanel
+                result={validationResult}
+                onNodeSelect={(nodeId) => {
+                  const { nodes } = flowDefinitionToNodesAndEdges(definition);
+                  const node = nodes.find((n) => n.id === nodeId);
+                  if (node) {
+                    handleNodeSelect(node);
+                  }
+                }}
+                onClose={() => setShowValidation(false)}
+                className="w-80"
+              />
+            )}
           </>
         ) : (
           /* YAML Editor */
@@ -566,6 +822,12 @@ export default function FlowEditor({
           </div>
         )}
       </div>
+
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+      />
     </div>
   );
 }

@@ -184,7 +184,7 @@ export default function DatabaseQueryForm({
             />
           </div>
 
-          {config.poll && (
+          {(config.poll as boolean) && (
             <>
               <div className="space-y-2">
                 <Label htmlFor="poll_until">Poll Until (Condition)</Label>

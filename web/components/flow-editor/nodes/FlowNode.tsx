@@ -436,6 +436,12 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
               retry ×{data.retry.max_attempts}
             </span>
           )}
+          {data.comments && data.comments.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 flex items-center gap-1">
+              <MessageSquare className="w-2.5 h-2.5" />
+              {data.comments.length}
+            </span>
+          )}
         </div>
       </div>
 

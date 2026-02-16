@@ -37,6 +37,17 @@ export type ActionType =
   | 'contract_generate'
   | 'contract_verify';
 
+// Comment structure for collaboration
+export interface Comment {
+  id: string;
+  author: string;
+  content: string;
+  timestamp: string;
+  edited?: boolean;
+  editedAt?: string;
+  replies?: Comment[];
+}
+
 // Simplified node data structure - uses Record<string, any> for config
 // This allows flexibility while maintaining structure for common properties
 export interface FlowNodeData {
@@ -54,6 +65,7 @@ export interface FlowNodeData {
     backoff?: string;
   };
   timeout?: string;
+  comments?: Comment[];
   // UI state
   isSelected?: boolean;
   isRunning?: boolean;

@@ -13,6 +13,7 @@ import {
   Lock,
   Key,
   Timer,
+  Cookie,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,8 @@ import {
 } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
 import VariablePicker from './VariablePicker';
+import SSLTLSConfigPanel, { type SSLTLSConfig } from './SSLTLSConfigPanel';
+import CookieManager, { type CookieConfig } from './CookieManager';
 
 interface HTTPStepFormProps {
   config: Record<string, unknown>;
@@ -238,6 +241,19 @@ export default function HTTPStepForm({
           )}
           <TabsTrigger value="auth" className="text-xs h-7 px-3">
             Auth
+          </TabsTrigger>
+          <TabsTrigger value="ssl" className="text-xs h-7 px-3">
+            <Lock className="w-3 h-3 mr-1" />
+            SSL/TLS
+          </TabsTrigger>
+          <TabsTrigger value="cookies" className="text-xs h-7 px-3">
+            <Cookie className="w-3 h-3 mr-1" />
+            Cookies
+            {((config.cookies as CookieConfig[]) || []).length > 0 && (
+              <span className="ml-1 text-[10px] bg-muted px-1 rounded">
+                {((config.cookies as CookieConfig[]) || []).length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -532,6 +548,22 @@ export default function HTTPStepForm({
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* SSL/TLS Configuration */}
+        <TabsContent value="ssl" className="mt-3">
+          <SSLTLSConfigPanel
+            value={(config.ssl as SSLTLSConfig) || {}}
+            onChange={(sslConfig) => onChange('ssl', sslConfig)}
+          />
+        </TabsContent>
+
+        {/* Cookies */}
+        <TabsContent value="cookies" className="mt-3">
+          <CookieManager
+            cookies={(config.cookies as CookieConfig[]) || []}
+            onChange={(cookies) => onChange('cookies', cookies)}
+          />
         </TabsContent>
       </Tabs>
 

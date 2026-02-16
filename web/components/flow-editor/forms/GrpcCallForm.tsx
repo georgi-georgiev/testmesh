@@ -159,7 +159,7 @@ export default function GrpcCallForm({
             />
           </div>
 
-          {config.use_tls && (
+          {(config.use_tls as boolean) && (
             <>
               {/* Server Name Override */}
               <div className="space-y-2">

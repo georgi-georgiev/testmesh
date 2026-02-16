@@ -35,8 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { FlowNode, FlowNodeData, ActionType } from './types';
+import type { FlowNode, FlowNodeData, ActionType, Comment } from './types';
 import { isFlowNodeData } from './types';
+import CommentPanel from './CommentPanel';
 import HTTPStepForm from './forms/HTTPStepForm';
 import DatabaseQueryForm from './forms/DatabaseQueryForm';
 import KafkaPublishForm from './forms/KafkaPublishForm';
@@ -50,6 +51,7 @@ import WebSocketForm from './forms/WebSocketForm';
 import BrowserForm from './forms/BrowserForm';
 import TransformForm from './forms/TransformForm';
 import AssertionBuilder from './forms/AssertionBuilder';
+import MockServerStartForm from './forms/MockServerStartForm';
 import JSONPathBuilder from './forms/JSONPathBuilder';
 import ErrorHandlingPanel, { type ErrorHandlingConfig } from './forms/ErrorHandlingPanel';
 import RetryConfigPanel, { type RetryConfig } from './forms/RetryConfigPanel';
@@ -161,6 +163,15 @@ export default function PropertiesPanel({
             <TabsTrigger value="assert" className="text-xs">Assert</TabsTrigger>
             <TabsTrigger value="output" className="text-xs">Output</TabsTrigger>
             <TabsTrigger value="error" className="text-xs">Error</TabsTrigger>
+            <TabsTrigger value="comments" className="text-xs flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" />
+              Comments
+              {localData.comments && localData.comments.length > 0 && (
+                <span className="ml-1 px-1 py-0.5 text-[10px] bg-blue-500 text-white rounded">
+                  {localData.comments.length}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -217,8 +228,8 @@ export default function PropertiesPanel({
               </summary>
               <div className="pt-3">
                 <RetryConfigPanel
-                  value={(localData.retry as RetryConfig) || {}}
-                  onChange={(retry) => updateData({ retry })}
+                  value={(localData.retry || {}) as RetryConfig}
+                  onChange={(retry) => updateData({ retry: retry as any })}
                 />
               </div>
             </details>
@@ -264,6 +275,16 @@ export default function PropertiesPanel({
                   on_timeout: errorConfig.on_timeout,
                 } as any);
               }}
+            />
+          </TabsContent>
+
+          <TabsContent value="comments" className="p-0 h-full">
+            <CommentPanel
+              nodeId={node.id}
+              nodeName={localData.name || localData.label}
+              comments={localData.comments || []}
+              onChange={(comments: Comment[]) => updateData({ comments })}
+              className="p-3"
             />
           </TabsContent>
         </Tabs>
@@ -314,7 +335,7 @@ function ActionConfig({
     case 'transform':
       return <TransformForm config={config} onChange={onConfigChange} />;
     case 'mock_server_start':
-      return <MockServerStartConfig config={config} onChange={onConfigChange} />;
+      return <MockServerStartForm config={config} onChange={onConfigChange} />;
     case 'mock_server_stop':
       return <MockServerStopConfig config={config} onChange={onConfigChange} />;
     case 'contract_generate':
@@ -602,7 +623,8 @@ function TransformConfig({
   );
 }
 
-// Mock Server Start Config
+// Mock Server Start Config - Now using MockServerStartForm
+// Kept for backward compatibility but redirects to the comprehensive form
 function MockServerStartConfig({
   config,
   onChange,
@@ -610,34 +632,7 @@ function MockServerStartConfig({
   config: Record<string, any>;
   onChange: (key: string, value: any) => void;
 }) {
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label className="text-xs">Server Name</Label>
-        <Input
-          value={config.name || ''}
-          onChange={(e) => onChange('name', e.target.value)}
-          placeholder="mock-api"
-          className="h-8 text-sm"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label className="text-xs">Port</Label>
-        <Input
-          type="number"
-          value={config.port || 5016}
-          onChange={(e) => onChange('port', parseInt(e.target.value) || 5016)}
-          placeholder="5016"
-          className="h-8 text-sm"
-        />
-      </div>
-
-      <div className="text-xs text-muted-foreground">
-        Configure endpoints in the advanced settings or edit YAML directly
-      </div>
-    </div>
-  );
+  return <MockServerStartForm config={config} onChange={onChange} />;
 }
 
 // Mock Server Stop Config

@@ -76,7 +76,7 @@ export default function SubFlowForm({
       </div>
 
       {/* View Flow Link */}
-      {config.flow && (
+      {(config.flow as string) && (
         <a
           href={`/flows/${config.flow}`}
           target="_blank"

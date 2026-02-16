@@ -556,6 +556,36 @@ export function flowDefinitionToYaml(definition: FlowDefinition): string {
     });
   }
 
+  // Flow-level configuration defaults
+  const defAny = definition as any;
+
+  // Default timeout
+  if (defAny.default_timeout) {
+    lines.push('');
+    lines.push(`  default_timeout: "${defAny.default_timeout}"`);
+  }
+
+  // Default retry
+  if (defAny.default_retry) {
+    lines.push('');
+    lines.push('  default_retry:');
+    lines.push(`    max_attempts: ${defAny.default_retry.max_attempts}`);
+    lines.push(`    delay: "${defAny.default_retry.delay}"`);
+    if (defAny.default_retry.backoff) {
+      lines.push(`    backoff: "${defAny.default_retry.backoff}"`);
+    }
+  }
+
+  // Execution settings
+  if (defAny.fail_fast !== undefined) {
+    lines.push('');
+    lines.push(`  fail_fast: ${defAny.fail_fast}`);
+  }
+  if (defAny.continue_on_error !== undefined) {
+    lines.push('');
+    lines.push(`  continue_on_error: ${defAny.continue_on_error}`);
+  }
+
   // Helper to convert steps to YAML (base indent is now 4 spaces under flow:)
   const stepsToYaml = (steps: Step[], indent: string = '  '): string[] => {
     const stepLines: string[] = [];
@@ -620,6 +650,30 @@ export function flowDefinitionToYaml(definition: FlowDefinition): string {
       // Timeout
       if (step.timeout) {
         stepLines.push(`${indent}  timeout: "${step.timeout}"`);
+      }
+
+      // Comments (for collaboration)
+      if ((step as any).comments && (step as any).comments.length > 0) {
+        stepLines.push(`${indent}  comments:`);
+        (step as any).comments.forEach((comment: any) => {
+          stepLines.push(`${indent}    - id: "${comment.id}"`);
+          stepLines.push(`${indent}      author: "${comment.author}"`);
+          stepLines.push(`${indent}      content: "${comment.content.replace(/"/g, '\\"')}"`);
+          stepLines.push(`${indent}      timestamp: "${comment.timestamp}"`);
+          if (comment.edited) {
+            stepLines.push(`${indent}      edited: ${comment.edited}`);
+            stepLines.push(`${indent}      editedAt: "${comment.editedAt}"`);
+          }
+          if (comment.replies && comment.replies.length > 0) {
+            stepLines.push(`${indent}      replies:`);
+            comment.replies.forEach((reply: any) => {
+              stepLines.push(`${indent}        - id: "${reply.id}"`);
+              stepLines.push(`${indent}          author: "${reply.author}"`);
+              stepLines.push(`${indent}          content: "${reply.content.replace(/"/g, '\\"')}"`);
+              stepLines.push(`${indent}          timestamp: "${reply.timestamp}"`);
+            });
+          }
+        });
       }
 
       stepLines.push('');
