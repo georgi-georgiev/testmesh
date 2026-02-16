@@ -18,6 +18,9 @@ import {
   Trash2,
   X,
   HelpCircle,
+  MessageSquare,
+  GitMerge,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -34,19 +37,47 @@ import {
 } from '@/components/ui/select';
 import type { FlowNode, FlowNodeData, ActionType } from './types';
 import { isFlowNodeData } from './types';
+import HTTPStepForm from './forms/HTTPStepForm';
+import DatabaseQueryForm from './forms/DatabaseQueryForm';
+import KafkaPublishForm from './forms/KafkaPublishForm';
+import KafkaConsumeForm from './forms/KafkaConsumeForm';
+import WaitUntilForm from './forms/WaitUntilForm';
+import SubFlowForm from './forms/SubFlowForm';
+import ParallelForm from './forms/ParallelForm';
+import GrpcCallForm from './forms/GrpcCallForm';
+import GrpcStreamForm from './forms/GrpcStreamForm';
+import WebSocketForm from './forms/WebSocketForm';
+import BrowserForm from './forms/BrowserForm';
+import TransformForm from './forms/TransformForm';
+import AssertionBuilder from './forms/AssertionBuilder';
+import JSONPathBuilder from './forms/JSONPathBuilder';
+import ErrorHandlingPanel, { type ErrorHandlingConfig } from './forms/ErrorHandlingPanel';
+import RetryConfigPanel, { type RetryConfig } from './forms/RetryConfigPanel';
 
 // Icon mapping
 const actionIcons: Record<ActionType, React.ElementType> = {
   http_request: Globe,
+  grpc_call: Globe,
+  grpc_stream: Globe,
+  websocket: Globe,
   database_query: Database,
+  kafka_publish: MessageSquare,
+  kafka_consume: MessageSquare,
+  browser: Globe,
   log: FileText,
   delay: Clock,
   assert: CheckCircle,
   transform: Wand2,
   condition: GitBranch,
   for_each: Repeat,
+  parallel: GitMerge,
+  wait_until: Clock,
+  run_flow: GitBranch,
   mock_server_start: Server,
   mock_server_stop: ServerOff,
+  mock_server_verify: CheckCircle,
+  mock_server_update: Server,
+  mock_server_reset_state: Server,
   contract_generate: FileCode,
   contract_verify: FileCheck,
 };
@@ -129,6 +160,7 @@ export default function PropertiesPanel({
             <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>
             <TabsTrigger value="assert" className="text-xs">Assert</TabsTrigger>
             <TabsTrigger value="output" className="text-xs">Output</TabsTrigger>
+            <TabsTrigger value="error" className="text-xs">Error</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -177,6 +209,19 @@ export default function PropertiesPanel({
                 className="h-8 text-sm"
               />
             </div>
+
+            {/* Retry Configuration */}
+            <details className="space-y-3 p-3 border rounded-lg">
+              <summary className="text-sm font-medium cursor-pointer">
+                Retry Configuration
+              </summary>
+              <div className="pt-3">
+                <RetryConfigPanel
+                  value={(localData.retry as RetryConfig) || {}}
+                  onChange={(retry) => updateData({ retry })}
+                />
+              </div>
+            </details>
           </TabsContent>
 
           {/* Config Tab - Action-specific */}
@@ -190,7 +235,7 @@ export default function PropertiesPanel({
 
           {/* Assert Tab */}
           <TabsContent value="assert" className="p-3 space-y-4">
-            <AssertionsEditor
+            <AssertionBuilder
               assertions={localData.assert || []}
               onChange={(assertions) => updateData({ assert: assertions })}
             />
@@ -201,6 +246,24 @@ export default function PropertiesPanel({
             <OutputEditor
               output={localData.output || {}}
               onChange={(output) => updateData({ output })}
+            />
+          </TabsContent>
+
+          {/* Error Handling Tab */}
+          <TabsContent value="error" className="p-3 space-y-4">
+            <ErrorHandlingPanel
+              value={{
+                on_error: (localData as any).on_error,
+                error_steps: (localData as any).error_steps,
+                on_timeout: (localData as any).on_timeout,
+              }}
+              onChange={(errorConfig) => {
+                updateData({
+                  on_error: errorConfig.on_error,
+                  error_steps: errorConfig.error_steps,
+                  on_timeout: errorConfig.on_timeout,
+                } as any);
+              }}
             />
           </TabsContent>
         </Tabs>
@@ -221,9 +284,27 @@ function ActionConfig({
 }) {
   switch (action) {
     case 'http_request':
-      return <HTTPRequestConfig config={config} onChange={onConfigChange} />;
+      return <HTTPStepForm config={config} onChange={onConfigChange} />;
+    case 'grpc_call':
+      return <GrpcCallForm config={config} onChange={onConfigChange} />;
+    case 'grpc_stream':
+      return <GrpcStreamForm config={config} onChange={onConfigChange} />;
+    case 'websocket':
+      return <WebSocketForm config={config} onChange={onConfigChange} />;
     case 'database_query':
-      return <DatabaseQueryConfig config={config} onChange={onConfigChange} />;
+      return <DatabaseQueryForm config={config} onChange={onConfigChange} />;
+    case 'kafka_publish':
+      return <KafkaPublishForm config={config} onChange={onConfigChange} />;
+    case 'kafka_consume':
+      return <KafkaConsumeForm config={config} onChange={onConfigChange} />;
+    case 'browser':
+      return <BrowserForm config={config} onChange={onConfigChange} />;
+    case 'parallel':
+      return <ParallelForm config={config} onChange={onConfigChange} />;
+    case 'wait_until':
+      return <WaitUntilForm config={config} onChange={onConfigChange} />;
+    case 'run_flow':
+      return <SubFlowForm config={config} onChange={onConfigChange} />;
     case 'log':
       return <LogConfig config={config} onChange={onConfigChange} />;
     case 'delay':
@@ -231,7 +312,7 @@ function ActionConfig({
     case 'assert':
       return <AssertConfig config={config} onChange={onConfigChange} />;
     case 'transform':
-      return <TransformConfig config={config} onChange={onConfigChange} />;
+      return <TransformForm config={config} onChange={onConfigChange} />;
     case 'mock_server_start':
       return <MockServerStartConfig config={config} onChange={onConfigChange} />;
     case 'mock_server_stop':
@@ -652,69 +733,6 @@ function ContractVerifyConfig({
   );
 }
 
-// Assertions Editor
-function AssertionsEditor({
-  assertions,
-  onChange,
-}: {
-  assertions: string[];
-  onChange: (assertions: string[]) => void;
-}) {
-  const addAssertion = () => {
-    onChange([...assertions, '']);
-  };
-
-  const updateAssertion = (index: number, value: string) => {
-    const newAssertions = [...assertions];
-    newAssertions[index] = value;
-    onChange(newAssertions);
-  };
-
-  const removeAssertion = (index: number) => {
-    onChange(assertions.filter((_, i) => i !== index));
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">Assertions</Label>
-        <Button variant="ghost" size="sm" onClick={addAssertion} className="h-6 px-2 text-xs">
-          <Plus className="w-3 h-3 mr-1" />
-          Add
-        </Button>
-      </div>
-
-      {assertions.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No assertions defined</p>
-      ) : (
-        <div className="space-y-2">
-          {assertions.map((assertion, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                value={assertion}
-                onChange={(e) => updateAssertion(index, e.target.value)}
-                placeholder="status == 200"
-                className="h-7 text-xs font-mono flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeAssertion(index)}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <p className="text-[10px] text-muted-foreground">
-        Examples: status == 200, body.id != null, body.items.length {'>'} 0
-      </p>
-    </div>
-  );
-}
 
 // Output Editor
 function OutputEditor({
@@ -724,6 +742,7 @@ function OutputEditor({
   output: Record<string, string>;
   onChange: (output: Record<string, string>) => void;
 }) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const entries = Object.entries(output);
 
   const addOutput = () => {
@@ -743,6 +762,9 @@ function OutputEditor({
     const newOutput = { ...output };
     delete newOutput[key];
     onChange(newOutput);
+    if (expandedKey === key) {
+      setExpandedKey(null);
+    }
   };
 
   return (
@@ -758,30 +780,45 @@ function OutputEditor({
       {entries.length === 0 ? (
         <p className="text-xs text-muted-foreground">No output variables defined</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {entries.map(([key, value], index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                value={key}
-                onChange={(e) => updateOutput(key, e.target.value, value)}
-                placeholder="var_name"
-                className="h-7 text-xs font-mono w-24"
-              />
-              <span className="text-muted-foreground">=</span>
-              <Input
-                value={value}
-                onChange={(e) => updateOutput(key, key, e.target.value)}
-                placeholder="$.path.to.value"
-                className="h-7 text-xs font-mono flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeOutput(key)}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-3 h-3" />
-              </Button>
+            <div key={index} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={key}
+                  onChange={(e) => updateOutput(key, e.target.value, value)}
+                  placeholder="var_name"
+                  className="h-7 text-xs font-mono w-24"
+                />
+                <span className="text-muted-foreground text-xs">=</span>
+                <Input
+                  value={value}
+                  onChange={(e) => updateOutput(key, key, e.target.value)}
+                  onFocus={() => setExpandedKey(key)}
+                  placeholder="$.path.to.value"
+                  className="h-7 text-xs font-mono flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeOutput(key)}
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+
+              {/* Show JSONPath builder when focused */}
+              {expandedKey === key && (
+                <div className="pl-8 pr-8">
+                  <JSONPathBuilder
+                    value={value}
+                    onChange={(newValue) => updateOutput(key, key, newValue)}
+                    label=""
+                    className="text-xs"
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -789,6 +826,8 @@ function OutputEditor({
 
       <p className="text-[10px] text-muted-foreground">
         Use JSONPath to extract values: $.id, $.data[0].name
+        <br />
+        Click on a value field to see JSONPath patterns and helpers
       </p>
     </div>
   );

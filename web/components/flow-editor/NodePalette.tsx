@@ -17,6 +17,11 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  MessageSquare,
+  GitMerge,
+  Network,
+  Radio,
+  Chrome,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -25,7 +30,7 @@ import { defaultConfigs } from './utils';
 
 // Palette items organized by category
 const paletteItems: PaletteItem[] = [
-  // HTTP
+  // HTTP & API
   {
     type: 'http_request',
     label: 'HTTP Request',
@@ -33,6 +38,30 @@ const paletteItems: PaletteItem[] = [
     icon: 'Globe',
     category: 'http',
     defaultConfig: defaultConfigs.http_request,
+  },
+  {
+    type: 'grpc_call',
+    label: 'gRPC Call',
+    description: 'Execute unary gRPC calls',
+    icon: 'Network',
+    category: 'http',
+    defaultConfig: defaultConfigs.grpc_call,
+  },
+  {
+    type: 'grpc_stream',
+    label: 'gRPC Stream',
+    description: 'Handle streaming gRPC calls',
+    icon: 'Network',
+    category: 'http',
+    defaultConfig: defaultConfigs.grpc_stream,
+  },
+  {
+    type: 'websocket',
+    label: 'WebSocket',
+    description: 'WebSocket connections and messaging',
+    icon: 'Radio',
+    category: 'http',
+    defaultConfig: defaultConfigs.websocket,
   },
 
   // Database
@@ -61,6 +90,58 @@ const paletteItems: PaletteItem[] = [
     icon: 'Repeat',
     category: 'control',
     defaultConfig: defaultConfigs.for_each,
+  },
+  {
+    type: 'parallel',
+    label: 'Parallel',
+    description: 'Execute multiple steps concurrently',
+    icon: 'GitMerge',
+    category: 'control',
+    defaultConfig: defaultConfigs.parallel,
+  },
+  {
+    type: 'wait_until',
+    label: 'Wait Until',
+    description: 'Poll until a condition is met',
+    icon: 'Clock',
+    category: 'control',
+    defaultConfig: defaultConfigs.wait_until,
+  },
+  {
+    type: 'run_flow',
+    label: 'Sub-flow',
+    description: 'Execute another flow as a step',
+    icon: 'GitBranch',
+    category: 'control',
+    defaultConfig: defaultConfigs.run_flow,
+  },
+
+  // Messaging
+  {
+    type: 'kafka_publish',
+    label: 'Kafka Publish',
+    description: 'Publish message to Kafka topic',
+    icon: 'MessageSquare',
+    category: 'messaging',
+    defaultConfig: defaultConfigs.kafka_publish,
+  },
+  {
+    type: 'kafka_consume',
+    label: 'Kafka Consume',
+    description: 'Consume messages from Kafka topic',
+    icon: 'MessageSquare',
+    category: 'messaging',
+    defaultConfig: defaultConfigs.kafka_consume,
+  },
+
+  // Browser
+  {
+    type: 'browser',
+    label: 'Browser',
+    description: 'Automate browser interactions and testing',
+    icon: 'Chrome',
+    category: 'browser',
+    defaultConfig: defaultConfigs.browser,
   },
 
   // Utility
@@ -148,12 +229,19 @@ const iconMap: Record<string, React.ElementType> = {
   ServerOff,
   FileCode,
   FileCheck,
+  MessageSquare,
+  GitMerge,
+  Network,
+  Radio,
+  Chrome,
 };
 
 // Category configuration
 const categories = [
-  { id: 'http', label: 'HTTP', color: 'text-blue-500' },
+  { id: 'http', label: 'HTTP & API', color: 'text-blue-500' },
   { id: 'database', label: 'Database', color: 'text-purple-500' },
+  { id: 'messaging', label: 'Messaging', color: 'text-violet-500' },
+  { id: 'browser', label: 'Browser', color: 'text-amber-500' },
   { id: 'control', label: 'Control Flow', color: 'text-cyan-500' },
   { id: 'utility', label: 'Utilities', color: 'text-gray-500' },
   { id: 'mock', label: 'Mock Servers', color: 'text-pink-500' },

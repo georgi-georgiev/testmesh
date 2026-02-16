@@ -20,6 +20,12 @@ import {
   CheckCircle2,
   Loader2,
   XCircle,
+  MessageSquare,
+  GitMerge,
+  Network,
+  Radio,
+  Chrome,
+  Timer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FlowNodeData, ActionType } from '../types';
@@ -27,15 +33,27 @@ import type { FlowNodeData, ActionType } from '../types';
 // Icon mapping for action types
 const actionIcons: Record<ActionType, React.ElementType> = {
   http_request: Globe,
+  grpc_call: Network,
+  grpc_stream: Network,
+  websocket: Radio,
   database_query: Database,
+  kafka_publish: MessageSquare,
+  kafka_consume: MessageSquare,
+  browser: Chrome,
   log: FileText,
   delay: Clock,
   assert: CheckCircle,
   transform: Wand2,
   condition: GitBranch,
   for_each: Repeat,
+  parallel: GitMerge,
+  wait_until: Timer,
+  run_flow: GitBranch,
   mock_server_start: Server,
   mock_server_stop: ServerOff,
+  mock_server_verify: CheckCircle,
+  mock_server_update: Server,
+  mock_server_reset_state: Server,
   contract_generate: FileCode,
   contract_verify: FileCheck,
 };
@@ -102,22 +120,111 @@ const actionColors: Record<ActionType, { bg: string; border: string; icon: strin
     border: 'border-teal-200 dark:border-teal-800',
     icon: 'text-teal-500',
   },
+  grpc_call: {
+    bg: 'bg-blue-50 dark:bg-blue-950',
+    border: 'border-blue-200 dark:border-blue-800',
+    icon: 'text-blue-500',
+  },
+  grpc_stream: {
+    bg: 'bg-blue-50 dark:bg-blue-950',
+    border: 'border-blue-200 dark:border-blue-800',
+    icon: 'text-blue-500',
+  },
+  websocket: {
+    bg: 'bg-blue-50 dark:bg-blue-950',
+    border: 'border-blue-200 dark:border-blue-800',
+    icon: 'text-blue-500',
+  },
+  kafka_publish: {
+    bg: 'bg-violet-50 dark:bg-violet-950',
+    border: 'border-violet-200 dark:border-violet-800',
+    icon: 'text-violet-500',
+  },
+  kafka_consume: {
+    bg: 'bg-violet-50 dark:bg-violet-950',
+    border: 'border-violet-200 dark:border-violet-800',
+    icon: 'text-violet-500',
+  },
+  browser: {
+    bg: 'bg-amber-50 dark:bg-amber-950',
+    border: 'border-amber-200 dark:border-amber-800',
+    icon: 'text-amber-500',
+  },
+  parallel: {
+    bg: 'bg-cyan-50 dark:bg-cyan-950',
+    border: 'border-cyan-200 dark:border-cyan-800',
+    icon: 'text-cyan-500',
+  },
+  wait_until: {
+    bg: 'bg-fuchsia-50 dark:bg-fuchsia-950',
+    border: 'border-fuchsia-200 dark:border-fuchsia-800',
+    icon: 'text-fuchsia-500',
+  },
+  run_flow: {
+    bg: 'bg-teal-50 dark:bg-teal-950',
+    border: 'border-teal-200 dark:border-teal-800',
+    icon: 'text-teal-500',
+  },
+  mock_server_verify: {
+    bg: 'bg-pink-50 dark:bg-pink-950',
+    border: 'border-pink-200 dark:border-pink-800',
+    icon: 'text-pink-500',
+  },
+  mock_server_update: {
+    bg: 'bg-pink-50 dark:bg-pink-950',
+    border: 'border-pink-200 dark:border-pink-800',
+    icon: 'text-pink-500',
+  },
+  mock_server_reset_state: {
+    bg: 'bg-pink-50 dark:bg-pink-950',
+    border: 'border-pink-200 dark:border-pink-800',
+    icon: 'text-pink-500',
+  },
 };
 
-// Status icon component
-function StatusIcon({ status }: { status?: FlowNodeData['status'] }) {
+// Status icon component with tooltip
+function StatusIcon({ status, error, duration }: {
+  status?: FlowNodeData['status'];
+  error?: string;
+  duration?: number;
+}) {
+  let icon = null;
+  let tooltip = '';
+
   switch (status) {
     case 'running':
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+      icon = <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+      tooltip = 'Running...';
+      break;
     case 'completed':
-      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      icon = <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      tooltip = duration ? `Completed in ${duration}ms` : 'Completed';
+      break;
     case 'failed':
-      return <XCircle className="w-4 h-4 text-red-500" />;
+      icon = <XCircle className="w-4 h-4 text-red-500" />;
+      tooltip = error || 'Failed';
+      break;
     case 'skipped':
-      return <AlertCircle className="w-4 h-4 text-gray-400" />;
+      icon = <AlertCircle className="w-4 h-4 text-gray-400" />;
+      tooltip = 'Skipped';
+      break;
     default:
       return null;
   }
+
+  return (
+    <div className="relative group/status">
+      {icon}
+      {tooltip && (
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none z-50">
+          <div className="bg-popover text-popover-foreground px-2 py-1 rounded text-[10px] whitespace-nowrap shadow-lg border">
+            {tooltip}
+          </div>
+          <div className="w-1.5 h-1.5 bg-popover border-r border-b transform rotate-45 mx-auto -mt-0.5"></div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Get display info for HTTP method
@@ -245,25 +352,34 @@ function NodeContent({ data }: { data: FlowNodeData }) {
 function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
   const Icon = actionIcons[data.action] || Box;
   const colors = actionColors[data.action] || actionColors.log;
+  const executionData = (data as any).execution; // Execution metadata: { startTime, endTime, duration, error }
 
   return (
     <div
       className={cn(
-        'rounded-lg border-2 shadow-sm transition-all',
+        'rounded-lg border-2 shadow-md transition-all group/node',
         'min-w-[240px] max-w-[320px]',
         colors.bg,
         colors.border,
-        selected && 'ring-2 ring-primary ring-offset-2',
-        data.status === 'failed' && 'border-red-500',
-        data.status === 'running' && 'border-blue-500 animate-pulse'
+        selected && 'ring-2 ring-primary ring-offset-2 shadow-lg',
+        data.status === 'failed' && 'border-red-500 shadow-red-200 dark:shadow-red-900',
+        data.status === 'running' && 'border-blue-500 shadow-blue-200 dark:shadow-blue-900 animate-pulse',
+        data.status === 'completed' && 'border-green-400 dark:border-green-600'
       )}
     >
       {/* Input Handle */}
       <Handle
         type="target"
         position={Position.Top}
-        className="!w-3 !h-3 !bg-muted-foreground !border-2 !border-background"
+        className="!w-3 !h-3 !bg-muted-foreground !border-2 !border-background hover:!w-4 hover:!h-4 transition-all"
       />
+
+      {/* Execution progress bar (for running status) */}
+      {data.status === 'running' && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-200 dark:bg-blue-900 rounded-t-lg overflow-hidden">
+          <div className="h-full bg-blue-500 animate-pulse w-full"></div>
+        </div>
+      )}
 
       <div className="p-3">
         {/* Header */}
@@ -276,11 +392,32 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
               {data.name || data.label}
             </div>
           </div>
-          <StatusIcon status={data.status} />
+          <StatusIcon
+            status={data.status}
+            error={executionData?.error}
+            duration={executionData?.duration}
+          />
         </div>
 
         {/* Action-specific content */}
         <NodeContent data={data} />
+
+        {/* Execution duration (for completed/failed steps) */}
+        {executionData?.duration && (data.status === 'completed' || data.status === 'failed') && (
+          <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+            <Timer className="w-3 h-3" />
+            <span>{executionData.duration}ms</span>
+          </div>
+        )}
+
+        {/* Error message (for failed steps) */}
+        {data.status === 'failed' && executionData?.error && (
+          <div className="mt-2 p-2 rounded bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+            <div className="text-[10px] text-red-700 dark:text-red-300 font-mono line-clamp-2">
+              {executionData.error}
+            </div>
+          </div>
+        )}
 
         {/* Badges */}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
@@ -306,7 +443,7 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!w-3 !h-3 !bg-muted-foreground !border-2 !border-background"
+        className="!w-3 !h-3 !bg-muted-foreground !border-2 !border-background hover:!w-4 hover:!h-4 transition-all"
       />
     </div>
   );

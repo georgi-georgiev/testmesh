@@ -37,6 +37,43 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
     query: '',
     params: [],
   },
+  kafka_publish: {
+    brokers: ['localhost:9092'],
+    topic: '',
+    key: '',
+    value: {},
+    headers: {},
+  },
+  kafka_consume: {
+    brokers: ['localhost:9092'],
+    topic: '',
+    group_id: '',
+    timeout: '10s',
+    max_messages: 1,
+    from_beginning: false,
+  },
+  grpc_call: {
+    service: '',
+    method: '',
+    address: '',
+    request: {},
+  },
+  grpc_stream: {
+    service: '',
+    method: '',
+    address: '',
+    request: {},
+  },
+  websocket: {
+    url: '',
+    messages: [],
+    timeout: '30s',
+  },
+  browser: {
+    action: 'navigate',
+    url: '',
+    steps: [],
+  },
   log: {
     message: '',
     level: 'info',
@@ -63,12 +100,41 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
     item_var: 'item',
     steps: [],
   },
+  parallel: {
+    wait_for_all: true,
+    fail_fast: false,
+    max_concurrent: 0,
+  },
+  wait_until: {
+    condition: '',
+    max_duration: '5m',
+    interval: '5s',
+    on_timeout: 'fail',
+  },
+  run_flow: {
+    flow: '',
+    input: {},
+    inherit_env: true,
+  },
   mock_server_start: {
     name: '',
     port: 5016,
     endpoints: [],
   },
   mock_server_stop: {
+    name: '',
+  },
+  mock_server_verify: {
+    name: '',
+    endpoint: '',
+    expected_calls: 1,
+  },
+  mock_server_update: {
+    name: '',
+    endpoint: '',
+    response: {},
+  },
+  mock_server_reset_state: {
     name: '',
   },
   contract_generate: {
@@ -678,9 +744,17 @@ export function validateNodeConfig(node: FlowNode): string[] {
 export function getActionColor(action: ActionType): string {
   switch (action) {
     case 'http_request':
+    case 'grpc_call':
+    case 'grpc_stream':
+    case 'websocket':
       return 'bg-blue-500';
     case 'database_query':
       return 'bg-purple-500';
+    case 'kafka_publish':
+    case 'kafka_consume':
+      return 'bg-violet-500';
+    case 'browser':
+      return 'bg-amber-500';
     case 'log':
       return 'bg-gray-500';
     case 'delay':
@@ -693,8 +767,17 @@ export function getActionColor(action: ActionType): string {
       return 'bg-cyan-500';
     case 'for_each':
       return 'bg-indigo-500';
+    case 'parallel':
+      return 'bg-cyan-600';
+    case 'wait_until':
+      return 'bg-fuchsia-500';
+    case 'run_flow':
+      return 'bg-teal-500';
     case 'mock_server_start':
     case 'mock_server_stop':
+    case 'mock_server_verify':
+    case 'mock_server_update':
+    case 'mock_server_reset_state':
       return 'bg-pink-500';
     case 'contract_generate':
     case 'contract_verify':
@@ -709,8 +792,18 @@ export function getActionIcon(action: ActionType): string {
   switch (action) {
     case 'http_request':
       return 'Globe';
+    case 'grpc_call':
+    case 'grpc_stream':
+      return 'Network';
+    case 'websocket':
+      return 'Radio';
     case 'database_query':
       return 'Database';
+    case 'kafka_publish':
+    case 'kafka_consume':
+      return 'MessageSquare';
+    case 'browser':
+      return 'Chrome';
     case 'log':
       return 'FileText';
     case 'delay':
@@ -723,10 +816,22 @@ export function getActionIcon(action: ActionType): string {
       return 'GitBranch';
     case 'for_each':
       return 'Repeat';
+    case 'parallel':
+      return 'GitMerge';
+    case 'wait_until':
+      return 'Clock';
+    case 'run_flow':
+      return 'GitBranch';
     case 'mock_server_start':
       return 'Server';
     case 'mock_server_stop':
       return 'ServerOff';
+    case 'mock_server_verify':
+      return 'CheckCircle';
+    case 'mock_server_update':
+      return 'Edit';
+    case 'mock_server_reset_state':
+      return 'RotateCcw';
     case 'contract_generate':
       return 'FileCode';
     case 'contract_verify':

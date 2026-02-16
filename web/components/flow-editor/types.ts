@@ -4,16 +4,36 @@ import type { Step, FlowDefinition } from '@/lib/api/types';
 
 // Action types supported by the flow editor
 export type ActionType =
+  // HTTP & API
   | 'http_request'
+  | 'grpc_call'
+  | 'grpc_stream'
+  | 'websocket'
+  // Database
   | 'database_query'
+  // Messaging
+  | 'kafka_publish'
+  | 'kafka_consume'
+  // Control Flow
+  | 'condition'
+  | 'for_each'
+  | 'parallel'
+  | 'wait_until'
+  | 'run_flow'
+  // Browser
+  | 'browser'
+  // Utilities
   | 'log'
   | 'delay'
   | 'assert'
   | 'transform'
-  | 'condition'
-  | 'for_each'
+  // Mock Server
   | 'mock_server_start'
   | 'mock_server_stop'
+  | 'mock_server_verify'
+  | 'mock_server_update'
+  | 'mock_server_reset_state'
+  // Contract Testing
   | 'contract_generate'
   | 'contract_verify';
 
@@ -90,8 +110,32 @@ export interface PaletteItem {
   label: string;
   description: string;
   icon: string;
-  category: 'http' | 'database' | 'control' | 'mock' | 'contract' | 'utility';
+  category: 'http' | 'database' | 'messaging' | 'control' | 'browser' | 'mock' | 'contract' | 'utility';
   defaultConfig: Record<string, any>;
+}
+
+// Parallel node data - extends FlowNodeData with parallel execution info
+export interface ParallelNodeData extends FlowNodeData {
+  action: 'parallel';
+  // IDs of parallel step nodes
+  parallelStepIds?: string[];
+  // Count of parallel steps
+  parallelStepCount?: number;
+  // Whether the container is expanded
+  isExpanded?: boolean;
+  // Parallel configuration
+  wait_for_all?: boolean;
+  fail_fast?: boolean;
+  max_concurrent?: number;
+}
+
+// WaitUntil node data - extends FlowNodeData with polling info
+export interface WaitUntilNodeData extends FlowNodeData {
+  action: 'wait_until';
+  // Nested steps for polling
+  nestedStepIds?: string[];
+  nestedStepCount?: number;
+  isExpanded?: boolean;
 }
 
 // Section types for flow phases
