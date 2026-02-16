@@ -586,6 +586,90 @@ func AutoMigrate(db *gorm.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_usage_stats_date ON ai.usage_stats(date);
 	`)
 
+	// Create system_integrations table (system-level, not workspace-scoped)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS system_integrations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			type VARCHAR(50) NOT NULL,
+			provider VARCHAR(50) NOT NULL,
+			status VARCHAR(20) DEFAULT 'active',
+			config JSONB DEFAULT '{}',
+			last_test_at TIMESTAMP WITH TIME ZONE,
+			last_test_status VARCHAR(20),
+			last_test_error TEXT,
+			created_by UUID,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_system_integrations_type ON system_integrations(type);
+		CREATE INDEX IF NOT EXISTS idx_system_integrations_provider ON system_integrations(provider);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_system_integrations_type_provider ON system_integrations(type, provider) WHERE deleted_at IS NULL;
+	`)
+
+	// Create integration_secrets table (encrypted storage)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS integration_secrets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			integration_id UUID NOT NULL REFERENCES system_integrations(id) ON DELETE CASCADE,
+			encrypted_data TEXT NOT NULL,
+			nonce TEXT NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_integration ON integration_secrets(integration_id);
+	`)
+
+	// Create git_trigger_rules table (workspace-scoped)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS git_trigger_rules (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+			integration_id UUID NOT NULL REFERENCES system_integrations(id),
+			name VARCHAR(255) NOT NULL,
+			repository VARCHAR(255) NOT NULL,
+			branch_filter VARCHAR(255) DEFAULT '*',
+			event_types TEXT[] DEFAULT ARRAY['push', 'pull_request'],
+			trigger_mode VARCHAR(20) NOT NULL,
+			schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
+			flow_id UUID REFERENCES flows.flows(id) ON DELETE CASCADE,
+			enabled BOOLEAN DEFAULT true,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT check_trigger_target CHECK (
+				(trigger_mode = 'schedule' AND schedule_id IS NOT NULL AND flow_id IS NULL) OR
+				(trigger_mode = 'direct' AND flow_id IS NOT NULL AND schedule_id IS NULL)
+			)
+		);
+		CREATE INDEX IF NOT EXISTS idx_git_rules_workspace ON git_trigger_rules(workspace_id);
+		CREATE INDEX IF NOT EXISTS idx_git_rules_repository ON git_trigger_rules(repository);
+		CREATE INDEX IF NOT EXISTS idx_git_rules_integration ON git_trigger_rules(integration_id);
+	`)
+
+	// Create webhook_deliveries table (audit log)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS webhook_deliveries (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			integration_id UUID NOT NULL REFERENCES system_integrations(id),
+			workspace_id UUID,
+			event_type VARCHAR(50) NOT NULL,
+			repository VARCHAR(255),
+			branch VARCHAR(255),
+			commit_sha VARCHAR(40),
+			payload JSONB NOT NULL,
+			signature VARCHAR(255),
+			status VARCHAR(20) NOT NULL,
+			error TEXT,
+			triggered_runs UUID[],
+			received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			processed_at TIMESTAMP WITH TIME ZONE
+		);
+		CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_integration ON webhook_deliveries(integration_id);
+		CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_received ON webhook_deliveries(received_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status);
+	`)
+
 	// Create schedules table
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS schedules (

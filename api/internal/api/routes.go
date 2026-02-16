@@ -17,10 +17,41 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/runner"
 	"github.com/georgi-georgiev/testmesh/internal/runner/debugger"
 	"github.com/georgi-georgiev/testmesh/internal/scheduler"
+	"github.com/georgi-georgiev/testmesh/internal/security"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// integrationRepoAdapter adapts IntegrationRepository to ai.IntegrationProvider interface
+type integrationRepoAdapter struct {
+	repo *repository.IntegrationRepository
+}
+
+// GetAIIntegrations implements ai.IntegrationProvider
+func (a *integrationRepoAdapter) GetAIIntegrations() ([]*ai.IntegrationData, error) {
+	integrations, err := a.repo.GetAllAIIntegrationsWithSecrets()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*ai.IntegrationData
+	for _, integration := range integrations {
+		data := &ai.IntegrationData{
+			Provider: string(integration.Provider),
+			Config: ai.IntegrationConfig{
+				Model:       integration.Config.Model,
+				Endpoint:    integration.Config.Endpoint,
+				Temperature: integration.Config.Temperature,
+				MaxTokens:   integration.Config.MaxTokens,
+			},
+			Secrets: integration.Secrets,
+		}
+		result = append(result, data)
+	}
+
+	return result, nil
+}
 
 // NewRouter creates and configures the API router
 func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engine {
@@ -44,6 +75,23 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	collectionRepo := repository.NewCollectionRepository(db)
 	historyRepo := repository.NewHistoryRepository(db)
 
+	// Initialize encryption service for integrations
+	encryptionKey := os.Getenv("ENCRYPTION_KEY")
+	if encryptionKey == "" {
+		logger.Warn("ENCRYPTION_KEY not set - generating temporary key (DO NOT USE IN PRODUCTION)")
+		// Generate a temporary key for development (32 bytes = 64 hex chars)
+		encryptionKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	}
+	encryptionService, err := security.NewEncryptionService(encryptionKey)
+	if err != nil {
+		logger.Fatal("Failed to initialize encryption service", zap.Error(err))
+	}
+
+	// Initialize integration repositories
+	integrationRepo := repository.NewIntegrationRepository(db, encryptionService)
+	gitTriggerRuleRepo := repository.NewGitTriggerRuleRepository(db)
+	webhookDeliveryRepo := repository.NewWebhookDeliveryRepository(db)
+
 	// Initialize reporting services
 	reportOutputDir := filepath.Join(os.TempDir(), "testmesh", "reports")
 	aggregator := reporting.NewAggregator(db, reportingRepo, executionRepo, flowRepo, logger)
@@ -54,13 +102,20 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 		logger.Error("Failed to schedule aggregation", zap.Error(err))
 	}
 
-	// Initialize AI services (using environment variables for API keys)
+	// Initialize AI services
+	// First try to load from database, fallback to environment variables
 	aiConfig := ai.ProviderConfig{
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		LocalEndpoint:   os.Getenv("LOCAL_LLM_ENDPOINT"),
 	}
 	aiProviders := ai.NewProviderManager(aiConfig, logger)
+
+	// Try to reload from database (will use env vars as fallback if DB has no integrations)
+	if err := aiProviders.ReloadFromDatabase(&integrationRepoAdapter{repo: integrationRepo}); err != nil {
+		logger.Warn("Failed to load AI providers from database, using environment variables", zap.Error(err))
+	}
+
 	aiGenerator := ai.NewGenerator(db, aiProviders, flowRepo, logger)
 	aiAnalyzer := ai.NewAnalyzer(db, aiProviders, flowRepo, logger)
 	aiSelfHealing := ai.NewSelfHealingEngine(db, aiProviders, flowRepo, executionRepo, logger)
@@ -139,6 +194,11 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// Initialize environment handler
 	envHandler := handlers.NewEnvironmentHandler(envRepo, logger)
 
+	// Initialize integration handlers
+	integrationHandler := handlers.NewIntegrationHandler(integrationRepo, aiProviders, logger)
+	gitTriggerRuleHandler := handlers.NewGitTriggerRuleHandler(gitTriggerRuleRepo, logger)
+	webhookHandler := handlers.NewWebhookHandler(integrationRepo, gitTriggerRuleRepo, webhookDeliveryRepo, sched, logger)
+
 	// Health check
 	router.GET("/health", healthHandler.Check)
 
@@ -149,6 +209,16 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 		ws := v1.Group("/workspaces/:workspace_id")
 		ws.Use(middleware.WorkspaceScope(workspaceRepo))
 		{
+			// Git trigger rules (workspace-scoped)
+			gitTriggerRules := ws.Group("/git-trigger-rules")
+			{
+				gitTriggerRules.GET("", gitTriggerRuleHandler.List)
+				gitTriggerRules.POST("", gitTriggerRuleHandler.Create)
+				gitTriggerRules.GET("/:id", gitTriggerRuleHandler.Get)
+				gitTriggerRules.PUT("/:id", gitTriggerRuleHandler.Update)
+				gitTriggerRules.DELETE("/:id", gitTriggerRuleHandler.Delete)
+			}
+
 			// Collection routes (workspace-scoped)
 			collections := ws.Group("/collections")
 			{
@@ -460,6 +530,27 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 			// Activity feed
 			collaboration.GET("/activity", collaborationHandler.ListActivity)
 		}
+
+		// Admin routes (require admin middleware)
+		admin := v1.Group("/admin")
+		admin.Use(middleware.RequireAdmin())
+		{
+			// System integrations (AI providers, Git webhooks)
+			integrations := admin.Group("/integrations")
+			{
+				integrations.GET("", integrationHandler.List)
+				integrations.POST("", integrationHandler.Create)
+				integrations.GET("/:id", integrationHandler.Get)
+				integrations.PUT("/:id", integrationHandler.Update)
+				integrations.DELETE("/:id", integrationHandler.Delete)
+				integrations.POST("/:id/test", integrationHandler.TestConnection)
+				integrations.GET("/:id/secrets", integrationHandler.GetSecrets)
+				integrations.PUT("/:id/secrets", integrationHandler.UpdateSecrets)
+			}
+		}
+
+		// Public webhook endpoint (no auth - signature verified)
+		v1.POST("/webhooks/github", webhookHandler.HandleGitHub)
 
 	}
 

@@ -28,6 +28,8 @@ import {
   ChevronRight,
   Settings,
   Globe,
+  Plug,
+  Users,
 } from 'lucide-react';
 import { EnvironmentSelector } from '@/components/environments/EnvironmentSelector';
 import { WorkspaceSwitcher } from '@/components/workspaces/WorkspaceSwitcher';
@@ -51,6 +53,15 @@ const navigation: NavSection[] = [
     items: [
       { title: 'Dashboard', href: '/', icon: LayoutDashboard },
       { title: 'Activity', href: '/activity', icon: Activity },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { title: 'Dashboard', href: '/admin', icon: Settings },
+      { title: 'Users', href: '/admin/users', icon: Users },
+      { title: 'Integrations', href: '/admin/integrations', icon: Plug },
+      { title: 'Health', href: '/admin/health', icon: Activity },
     ],
   },
   {
@@ -110,7 +121,7 @@ export function Sidebar() {
   return (
     <div
       className={cn(
-        'flex flex-col border-r bg-background transition-all duration-300',
+        'flex flex-col h-full border-r bg-background transition-all duration-300',
         collapsed ? 'w-16' : 'w-64'
       )}
     >
@@ -158,8 +169,8 @@ export function Sidebar() {
       )}
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 py-2">
-        <nav className="space-y-1 px-2">
+      <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+        <nav className="space-y-1 px-2 py-2">
           {navigation.map((section, sectionIdx) => (
             <div key={section.title}>
               {sectionIdx > 0 && <Separator className="my-2" />}

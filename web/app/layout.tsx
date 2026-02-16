@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { MainLayout } from "@/components/layout";
 import { WorkspaceProvider } from "@/components/workspaces/WorkspaceProvider";
+import { Toaster } from "@/components/ui/sonner";
 
 const outfit = Outfit({subsets:['latin'],variable:'--font-sans'});
 
@@ -47,6 +48,7 @@ export default function RootLayout({
               </WorkspaceProvider>
             </AuthProvider>
           </QueryProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

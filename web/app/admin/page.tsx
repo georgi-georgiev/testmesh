@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Workflow,
   Calendar,
+  Plug,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -306,7 +307,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/admin/users">
           <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader>
@@ -315,6 +316,18 @@ export default function AdminDashboard() {
                 <CardTitle className="text-base">User Management</CardTitle>
               </div>
               <CardDescription>Manage users, roles, and permissions</CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href="/admin/integrations">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Plug className="w-5 h-5 text-orange-500" />
+                <CardTitle className="text-base">Integrations</CardTitle>
+              </div>
+              <CardDescription>Configure AI providers and Git webhooks</CardDescription>
             </CardHeader>
           </Card>
         </Link>

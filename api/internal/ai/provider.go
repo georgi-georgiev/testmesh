@@ -510,3 +510,83 @@ func (pm *ProviderManager) ListProviders() []models.AIProviderType {
 	}
 	return result
 }
+
+// IntegrationData is a minimal interface to avoid circular dependencies
+type IntegrationData struct {
+	Provider string
+	Config   IntegrationConfig
+	Secrets  map[string]string
+}
+
+// IntegrationConfig holds integration configuration
+type IntegrationConfig struct {
+	Model       string
+	Endpoint    string
+	Temperature float64
+	MaxTokens   int
+}
+
+// IntegrationProvider interface to avoid circular dependency with repository package
+type IntegrationProvider interface {
+	GetAIIntegrations() ([]*IntegrationData, error)
+}
+
+// ReloadFromDatabase reloads AI providers from the database integrations
+// This allows dynamic configuration of AI providers without restart
+func (pm *ProviderManager) ReloadFromDatabase(repo IntegrationProvider) error {
+	pm.logger.Info("Reloading AI providers from database")
+
+	// Get all active AI provider integrations
+	integrations, err := repo.GetAIIntegrations()
+	if err != nil {
+		pm.logger.Warn("Failed to load AI integrations from database", zap.Error(err))
+		return err
+	}
+
+	// Clear existing providers
+	pm.providers = make(map[models.AIProviderType]Provider)
+	pm.primary = ""
+
+	// Load each integration
+	for _, integration := range integrations {
+		apiKey := integration.Secrets["api_key"]
+
+		var provider Provider
+		var providerType models.AIProviderType
+
+		switch integration.Provider {
+		case "openai":
+			provider = NewOpenAIProvider(apiKey, pm.logger)
+			providerType = models.AIProviderOpenAI
+		case "anthropic":
+			provider = NewAnthropicProvider(apiKey, pm.logger)
+			providerType = models.AIProviderAnthropic
+		case "local":
+			endpoint := integration.Config.Endpoint
+			if endpoint == "" {
+				pm.logger.Warn("Local provider missing endpoint, skipping")
+				continue
+			}
+			provider = NewLocalProvider(endpoint, pm.logger)
+			providerType = models.AIProviderLocal
+		default:
+			pm.logger.Warn("Unknown AI provider", zap.String("provider", integration.Provider))
+			continue
+		}
+
+		if provider.IsConfigured() {
+			pm.providers[providerType] = provider
+			// Set first configured provider as primary
+			if pm.primary == "" {
+				pm.primary = providerType
+			}
+			pm.logger.Info("Loaded AI provider", zap.String("provider", string(providerType)))
+		}
+	}
+
+	if len(pm.providers) == 0 {
+		pm.logger.Warn("No AI providers configured in database")
+	}
+
+	return nil
+}
