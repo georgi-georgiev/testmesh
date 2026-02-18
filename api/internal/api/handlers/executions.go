@@ -301,10 +301,16 @@ func (h *ExecutionHandler) mergeEnvironmentVariables(environmentRef string, work
 		}
 
 		if err != nil {
-			h.logger.Warn("Failed to fetch environment",
+			h.logger.Warn("Failed to fetch environment by ref, trying default",
 				zap.String("environment", environmentRef),
 				zap.Error(err))
-		} else if env != nil {
+			// Fall back to default environment for the workspace
+			env, err = h.envRepo.GetDefault(workspaceID)
+			if err != nil {
+				h.logger.Warn("Failed to fetch default environment", zap.Error(err))
+			}
+		}
+		if env != nil {
 			// Add enabled environment variables
 			for _, v := range env.Variables {
 				if v.Enabled {

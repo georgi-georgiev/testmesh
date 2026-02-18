@@ -65,7 +65,8 @@
       "Bash(/tmp/yamltest.go:*)",
       "Bash(/tmp/yamltest2.go:*)",
       "Bash(/tmp/yamltest3.go:*)",
-      "Bash(/Users/ggeorgiev/Dev/testmesh/api/cmd/seed/yamltest_temp/main.go:*)"
+      "Bash(/Users/ggeorgiev/Dev/testmesh/api/cmd/seed/yamltest_temp/main.go:*)",
+      "Bash(/dev/null grep -rn \"kafka_producer\\\\|KafkaProducer\\\\|produce\" /Users/ggeorgiev/Dev/testmesh/api/internal/runner/ --include=*.go)"
     ]
   }
 }

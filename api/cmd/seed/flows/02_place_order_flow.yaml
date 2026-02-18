@@ -16,7 +16,7 @@ steps:
         email: "alice@example.com"
         password: "secret123"
     assert:
-      - "login.status == 200"
+      - "status == 200"
     output:
       token: "login.body.token"
       user_id: "login.body.user_id"
@@ -38,7 +38,7 @@ steps:
             price: 49.99
         total: 99.98
     assert:
-      - "create_order.status == 201"
+      - "status == 201"
     output:
       order_id: "create_order.body.id"
 
@@ -57,8 +57,8 @@ steps:
         currency: USD
         method: card
     assert:
-      - "pay.status == 200"
-      - "pay.body.status == 'succeeded'"
+      - "status == 200"
+      - "body.status == 'succeeded'"
     output:
       payment_id: "pay.body.id"
 

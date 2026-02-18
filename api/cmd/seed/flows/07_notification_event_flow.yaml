@@ -16,7 +16,7 @@ steps:
         user_id: "user-001"
         total: 59.99
     assert:
-      - "create_order.status == 201"
+      - "status == 201"
     output:
       order_id: "create_order.body.id"
 
@@ -33,7 +33,7 @@ steps:
         subject: "Order ${create_order.body.id} Confirmed"
         body: "Your order has been placed."
     assert:
-      - "send_email.status == 202"
+      - "status == 202"
     output:
       email_msg_id: "send_email.body.message_id"
 
@@ -49,7 +49,7 @@ steps:
         to: "+1234567890"
         body: "Order confirmed: ${create_order.body.id}"
     assert:
-      - "send_sms.status == 202"
+      - "status == 202"
     output:
       sms_msg_id: "send_sms.body.message_id"
 

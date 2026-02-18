@@ -41,10 +41,10 @@ func (r *EnvironmentRepository) GetByID(id uuid.UUID, workspaceID uuid.UUID) (*m
 	return &env, nil
 }
 
-// GetByName retrieves an environment by name within a workspace
+// GetByName retrieves an environment by name within a workspace (case-insensitive)
 func (r *EnvironmentRepository) GetByName(name string, workspaceID uuid.UUID) (*models.Environment, error) {
 	var env models.Environment
-	if err := r.db.First(&env, "name = ? AND workspace_id = ?", name, workspaceID).Error; err != nil {
+	if err := r.db.First(&env, "LOWER(name) = LOWER(?) AND workspace_id = ?", name, workspaceID).Error; err != nil {
 		return nil, err
 	}
 	return &env, nil

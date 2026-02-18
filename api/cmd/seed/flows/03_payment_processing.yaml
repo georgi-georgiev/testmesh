@@ -19,7 +19,7 @@ steps:
         currency: USD
         method: card
     assert:
-      - "create_payment.status == 200"
+      - "status == 200"
     output:
       payment_id: "create_payment.body.id"
 
@@ -32,7 +32,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "get_payment.status == 200"
+      - "status == 200"
 
   - id: assert_payment
     action: assert
@@ -68,7 +68,7 @@ steps:
         amount: 149.99
         reason: test
     assert:
-      - "refund.status == 200"
+      - "status == 200"
 
   - id: done
     action: log

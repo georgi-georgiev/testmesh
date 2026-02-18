@@ -47,7 +47,7 @@ steps:
       connection: "${DB_DSN}"
       query: "SELECT 1 AS ok"
     assert:
-      - "db_health.row_count == 1"
+      - "row_count == 1"
     output:
       db_ok: "db_health.first_row.ok"
 

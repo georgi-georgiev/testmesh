@@ -24,14 +24,16 @@ interface WorkspaceSwitcherProps {
 export function WorkspaceSwitcher({ className, compact = false }: WorkspaceSwitcherProps) {
   const { data: workspacesData, isLoading: isLoadingWorkspaces } = useWorkspaces();
   const { data: personalWorkspace, isLoading: isLoadingPersonal } = usePersonalWorkspace();
-  const { activeWorkspaceId, workspace: activeWorkspace, setActiveWorkspace } = useActiveWorkspace();
+  const { activeWorkspaceId, hydrated, workspace: activeWorkspace, setActiveWorkspace } = useActiveWorkspace();
 
-  // Auto-select personal workspace if no workspace is active
+  // Auto-select personal workspace only after localStorage has been read (hydrated)
+  // This prevents overwriting the stored selection during the initial render
   useEffect(() => {
+    if (!hydrated) return;
     if (!activeWorkspaceId && personalWorkspace && !isLoadingPersonal) {
       setActiveWorkspace(personalWorkspace.id);
     }
-  }, [activeWorkspaceId, personalWorkspace, isLoadingPersonal, setActiveWorkspace]);
+  }, [hydrated, activeWorkspaceId, personalWorkspace, isLoadingPersonal, setActiveWorkspace]);
 
   const isLoading = isLoadingWorkspaces || isLoadingPersonal;
   const workspaces = workspacesData?.workspaces ?? [];

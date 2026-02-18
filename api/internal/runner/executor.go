@@ -113,12 +113,14 @@ func (e *Executor) executeStepsWithoutPersistence(ctx context.Context, steps []m
 			return fmt.Errorf("step %s failed: %w", stepID, err)
 		}
 
-		// Store step output in context for subsequent steps
-		if step.Output != nil {
-			for key, path := range step.Output {
-				value := extractValue(result, path)
-				execCtx.SetStepOutput(stepID, key, value)
-			}
+		// Auto-store all direct result keys so ${stepId.key} works without an output: section
+		for key, value := range result {
+			execCtx.SetStepOutput(stepID, key, value)
+		}
+		// Store explicitly-mapped output paths (overrides auto-stored values)
+		for key, path := range step.Output {
+			value := extractValue(result, path)
+			execCtx.SetStepOutput(stepID, key, value)
 		}
 	}
 	return nil
@@ -265,12 +267,14 @@ func (e *Executor) executeSteps(ctx context.Context, execution *models.Execution
 			})
 		}
 
-		// Store step output in context
-		if step.Output != nil {
-			for key, path := range step.Output {
-				value := extractValue(result, path)
-				execCtx.SetStepOutput(stepID, key, value)
-			}
+		// Auto-store all direct result keys so ${stepId.key} works without an output: section
+		for key, value := range result {
+			execCtx.SetStepOutput(stepID, key, value)
+		}
+		// Store explicitly-mapped output paths (overrides auto-stored values)
+		for key, path := range step.Output {
+			value := extractValue(result, path)
+			execCtx.SetStepOutput(stepID, key, value)
 		}
 	}
 
@@ -469,6 +473,8 @@ func (e *Executor) getActionHandler(actionType string) (actions.Handler, error) 
 		verifier := contracts.NewVerifier(e.contractRepo, e.logger)
 		differ := contracts.NewDiffer(e.contractRepo, e.logger)
 		return actions.NewContractVerifyHandler(verifier, differ, e.logger), nil
+	case "kafka_consumer":
+		return actions.NewKafkaConsumerHandler(e.logger), nil
 	case "websocket":
 		return actions.NewWebSocketHandler(e.logger), nil
 	case "grpc":
@@ -527,13 +533,43 @@ func extractValue(result models.OutputData, path string) interface{} {
 		return result
 	}
 
-	// Use assertion evaluator for JSONPath extraction
+	// Try JSONPath extraction (works for HTTP steps with body)
 	evaluator := assertions.NewEvaluator(result)
 	value, err := evaluator.EvaluateJSONPath(path)
-	if err != nil {
-		// Fallback to direct field access
-		return result[path]
+	if err == nil {
+		return value
 	}
 
-	return value
+	// Fallback: dot-notation traversal over the full result map
+	if dotValue := extractDotPath(map[string]interface{}(result), path); dotValue != nil {
+		return dotValue
+	}
+
+	// Final fallback: direct key access
+	return result[path]
+}
+
+// extractDotPath traverses a nested map using dot-separated path segments.
+func extractDotPath(data map[string]interface{}, path string) interface{} {
+	parts := strings.SplitN(path, ".", 2)
+	val, ok := data[parts[0]]
+	if !ok || val == nil {
+		return nil
+	}
+	if len(parts) == 1 {
+		return val
+	}
+	switch nested := val.(type) {
+	case map[string]interface{}:
+		return extractDotPath(nested, parts[1])
+	case map[interface{}]interface{}:
+		converted := make(map[string]interface{}, len(nested))
+		for k, v := range nested {
+			if ks, ok := k.(string); ok {
+				converted[ks] = v
+			}
+		}
+		return extractDotPath(converted, parts[1])
+	}
+	return nil
 }

@@ -145,28 +145,14 @@ export function Sidebar() {
       </div>
 
       {/* Workspace Switcher */}
-      {!collapsed && (
-        <div className="px-3 py-2 border-b">
-          <WorkspaceSwitcher className="w-full" />
-        </div>
-      )}
-      {collapsed && (
-        <div className="px-2 py-2 border-b flex justify-center">
-          <WorkspaceSwitcher compact />
-        </div>
-      )}
+      <div className={cn('border-b', collapsed ? 'px-2 py-2 flex justify-center' : 'px-3 py-2')}>
+        <WorkspaceSwitcher className={!collapsed ? 'w-full' : undefined} compact={collapsed} />
+      </div>
 
       {/* Environment Selector */}
-      {!collapsed && (
-        <div className="px-3 py-2 border-b">
-          <EnvironmentSelector className="w-full" />
-        </div>
-      )}
-      {collapsed && (
-        <div className="px-2 py-2 border-b flex justify-center">
-          <EnvironmentSelector compact />
-        </div>
-      )}
+      <div className={cn('border-b', collapsed ? 'px-2 py-2 flex justify-center' : 'px-3 py-2')}>
+        <EnvironmentSelector className={!collapsed ? 'w-full' : undefined} compact={collapsed} />
+      </div>
 
       {/* Navigation */}
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">

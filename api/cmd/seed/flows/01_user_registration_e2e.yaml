@@ -18,7 +18,7 @@ steps:
         email: "alice@example.com"
         password: "secret123"
     assert:
-      - "register.status == 201"
+      - "status == 201"
     output:
       user_id: "register.body.id"
 
@@ -31,7 +31,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "get_user.status == 200"
+      - "status == 200"
 
   - id: verify_db
     action: database_query

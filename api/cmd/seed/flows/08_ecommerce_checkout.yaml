@@ -16,7 +16,7 @@ steps:
         email: "bob@example.com"
         password: "secret123"
     assert:
-      - "login.status == 200"
+      - "status == 200"
     output:
       token: "login.body.token"
 
@@ -40,7 +40,7 @@ steps:
             price: 9.99
         total: 109.96
     assert:
-      - "create_order.status == 201"
+      - "status == 201"
     output:
       order_id: "create_order.body.id"
 
@@ -59,7 +59,7 @@ steps:
         currency: USD
         method: card
     assert:
-      - "pay.status == 200"
+      - "status == 200"
     output:
       payment_id: "pay.body.id"
 
@@ -76,7 +76,7 @@ steps:
         subject: "Order Confirmed"
         body: "Payment ${pay.body.id} succeeded. Total: $109.96"
     assert:
-      - "notify.status == 202"
+      - "status == 202"
 
   - id: verify_db
     action: database_query

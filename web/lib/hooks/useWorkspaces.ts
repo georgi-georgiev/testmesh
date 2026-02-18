@@ -53,11 +53,13 @@ export function clearActiveWorkspaceId(): void {
 // Hook to manage active workspace state
 export function useActiveWorkspace() {
   const [activeWorkspaceId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const queryClient = useQueryClient();
 
   // Initialize from localStorage on mount
   useEffect(() => {
     setActiveId(getActiveWorkspaceId());
+    setHydrated(true);
   }, []);
 
   // Listen for workspace changes from other components
@@ -91,6 +93,7 @@ export function useActiveWorkspace() {
 
   return {
     activeWorkspaceId,
+    hydrated,
     workspace: workspaceQuery.data,
     isLoading: workspaceQuery.isLoading,
     setActiveWorkspace,

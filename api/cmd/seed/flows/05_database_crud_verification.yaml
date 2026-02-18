@@ -11,7 +11,7 @@ steps:
       connection: "${DB_DSN}"
       query: "SELECT 1 AS ok"
     assert:
-      - "health.row_count == 1"
+      - "row_count == 1"
 
   - id: count_users
     action: database_query

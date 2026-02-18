@@ -11,7 +11,7 @@ steps:
       connection: "${DB_DSN}"
       query: "SELECT COUNT(*) AS total FROM mocks.mock_servers WHERE status = 'running'"
     output:
-      running_mocks: "mock_stats.first_row.total"
+      running_mocks: "first_row.total"
 
   - id: request_stats
     action: database_query
@@ -20,8 +20,8 @@ steps:
       connection: "${DB_DSN}"
       query: "SELECT COUNT(*) AS total, SUM(CASE WHEN matched THEN 1 ELSE 0 END) AS matched_count FROM mocks.mock_requests"
     output:
-      total_requests: "request_stats.first_row.total"
-      matched_count: "request_stats.first_row.matched_count"
+      total_requests: "first_row.total"
+      matched_count: "first_row.matched_count"
 
   - id: unmatched
     action: database_query
@@ -39,7 +39,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "testmesh_api.status == 200"
+      - "status == 200"
 
   - id: assert_audit
     action: assert
@@ -54,5 +54,5 @@ steps:
     action: log
     name: "Log audit summary"
     config:
-      message: "Audit: ${mock_stats.first_row.total} mocks running, ${request_stats.first_row.total} total requests, ${request_stats.first_row.matched_count} matched"
+      message: "Audit: ${mock_stats.running_mocks} mocks running, ${request_stats.total_requests} total requests, ${request_stats.matched_count} matched"
       level: info

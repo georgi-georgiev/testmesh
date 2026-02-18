@@ -16,9 +16,9 @@ steps:
         user_id: "user-kafka-test"
         total: 29.99
     assert:
-      - "create_order.status == 201"
+      - "status == 201"
     output:
-      order_id: "create_order.body.id"
+      order_id: "body.id"
 
   - id: wait
     action: delay
@@ -37,7 +37,7 @@ steps:
       timeout: "10s"
       count: 1
     output:
-      msg_count: "consume.count"
+      msg_count: "count"
 
   - id: verify_db
     action: database_query
@@ -48,7 +48,7 @@ steps:
       params:
         - "${create_order.body.id}"
     output:
-      db_cnt: "verify_db.first_row.cnt"
+      db_cnt: "first_row.cnt"
 
   - id: assert_event
     action: assert
@@ -63,5 +63,5 @@ steps:
     action: log
     name: "Log Kafka validation result"
     config:
-      message: "Kafka validation: order=${create_order.body.id} kafka_messages=${consume.count} db_rows=${verify_db.first_row.cnt}"
+      message: "Kafka validation: kafka_messages=${consume.msg_count} db_rows=${verify_db.db_cnt}"
       level: info

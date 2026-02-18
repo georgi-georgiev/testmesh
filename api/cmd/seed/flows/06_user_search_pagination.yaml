@@ -13,7 +13,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "list_users.status == 200"
+      - "status == 200"
     output:
       total: "list_users.body.total"
 
@@ -26,7 +26,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "search.status == 200"
+      - "status == 200"
 
   - id: get_user
     action: http_request
@@ -37,7 +37,7 @@ steps:
       headers:
         X-API-Key: "${API_KEY}"
     assert:
-      - "get_user.status == 200"
+      - "status == 200"
     output:
       fetched_id: "get_user.body.id"
 
