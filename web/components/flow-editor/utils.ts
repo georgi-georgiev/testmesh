@@ -37,19 +37,19 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
     query: '',
     params: [],
   },
-  kafka_publish: {
+  kafka_producer: {
     brokers: ['localhost:9092'],
     topic: '',
     key: '',
-    value: {},
+    payload: {},
     headers: {},
   },
-  kafka_consume: {
+  kafka_consumer: {
     brokers: ['localhost:9092'],
     topic: '',
     group_id: '',
     timeout: '10s',
-    max_messages: 1,
+    count: 1,
     from_beginning: false,
   },
   grpc_call: {
@@ -105,11 +105,26 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
     fail_fast: false,
     max_concurrent: 0,
   },
+  wait_for: {
+    type: 'http',
+    url: '',
+    timeout: '30s',
+    interval: '1s',
+    status_code: 200,
+  },
   wait_until: {
     condition: '',
     max_duration: '5m',
     interval: '5s',
     on_timeout: 'fail',
+  },
+  db_poll: {
+    connection: '',
+    query: '',
+    params: [],
+    timeout: '30s',
+    interval: '1s',
+    condition: { type: 'row_exists' },
   },
   run_flow: {
     flow: '',
@@ -803,9 +818,10 @@ export function getActionColor(action: ActionType): string {
     case 'websocket':
       return 'bg-blue-500';
     case 'database_query':
+    case 'db_poll':
       return 'bg-purple-500';
-    case 'kafka_publish':
-    case 'kafka_consume':
+    case 'kafka_producer':
+    case 'kafka_consumer':
       return 'bg-violet-500';
     case 'browser':
       return 'bg-amber-500';
@@ -823,6 +839,7 @@ export function getActionColor(action: ActionType): string {
       return 'bg-indigo-500';
     case 'parallel':
       return 'bg-cyan-600';
+    case 'wait_for':
     case 'wait_until':
       return 'bg-fuchsia-500';
     case 'run_flow':
@@ -852,9 +869,10 @@ export function getActionIcon(action: ActionType): string {
     case 'websocket':
       return 'Radio';
     case 'database_query':
+    case 'db_poll':
       return 'Database';
-    case 'kafka_publish':
-    case 'kafka_consume':
+    case 'kafka_producer':
+    case 'kafka_consumer':
       return 'MessageSquare';
     case 'browser':
       return 'Chrome';
@@ -872,6 +890,7 @@ export function getActionIcon(action: ActionType): string {
       return 'Repeat';
     case 'parallel':
       return 'GitMerge';
+    case 'wait_for':
     case 'wait_until':
       return 'Clock';
     case 'run_flow':

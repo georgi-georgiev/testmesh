@@ -73,6 +73,14 @@ const paletteItems: PaletteItem[] = [
     category: 'database',
     defaultConfig: defaultConfigs.database_query,
   },
+  {
+    type: 'db_poll',
+    label: 'DB Poll',
+    description: 'Poll a database query until a condition is met',
+    icon: 'Database',
+    category: 'database',
+    defaultConfig: defaultConfigs.db_poll,
+  },
 
   // Control Flow
   {
@@ -100,9 +108,17 @@ const paletteItems: PaletteItem[] = [
     defaultConfig: defaultConfigs.parallel,
   },
   {
+    type: 'wait_for',
+    label: 'Wait For',
+    description: 'Poll HTTP endpoint or TCP port until available',
+    icon: 'Clock',
+    category: 'control',
+    defaultConfig: defaultConfigs.wait_for,
+  },
+  {
     type: 'wait_until',
     label: 'Wait Until',
-    description: 'Poll until a condition is met',
+    description: 'Poll nested steps until a condition expression is met',
     icon: 'Clock',
     category: 'control',
     defaultConfig: defaultConfigs.wait_until,
@@ -118,20 +134,20 @@ const paletteItems: PaletteItem[] = [
 
   // Messaging
   {
-    type: 'kafka_publish',
+    type: 'kafka_producer',
     label: 'Kafka Publish',
     description: 'Publish message to Kafka topic',
     icon: 'MessageSquare',
     category: 'messaging',
-    defaultConfig: defaultConfigs.kafka_publish,
+    defaultConfig: defaultConfigs.kafka_producer,
   },
   {
-    type: 'kafka_consume',
+    type: 'kafka_consumer',
     label: 'Kafka Consume',
     description: 'Consume messages from Kafka topic',
     icon: 'MessageSquare',
     category: 'messaging',
-    defaultConfig: defaultConfigs.kafka_consume,
+    defaultConfig: defaultConfigs.kafka_consumer,
   },
 
   // Browser

@@ -110,8 +110,8 @@ export function validateNode(data: FlowNodeData, nodeId: string): ValidationIssu
     case 'websocket':
       validateWebSocket(config, nodeId, stepId, issues);
       break;
-    case 'kafka_publish':
-    case 'kafka_consume':
+    case 'kafka_producer':
+    case 'kafka_consumer':
       validateKafka(config, nodeId, stepId, issues, action);
       break;
     case 'delay':
@@ -129,8 +129,14 @@ export function validateNode(data: FlowNodeData, nodeId: string): ValidationIssu
     case 'for_each':
       validateForEach(config, nodeId, stepId, issues);
       break;
+    case 'wait_for':
+      validateWaitFor(config, nodeId, stepId, issues);
+      break;
     case 'wait_until':
       validateWaitUntil(config, nodeId, stepId, issues);
+      break;
+    case 'db_poll':
+      validateDBPoll(config, nodeId, stepId, issues);
       break;
     case 'mock_server_start':
       validateMockServerStart(config, nodeId, stepId, issues);
@@ -332,7 +338,7 @@ function validateKafka(config: any, nodeId: string, stepId: string, issues: Vali
     });
   }
 
-  if (action === 'kafka_consume' && !config.group_id) {
+  if (action === 'kafka_consumer' && !config.group_id) {
     issues.push({
       id: `${nodeId}-no-group-id`,
       severity: 'warning',
@@ -493,6 +499,65 @@ function validateWaitUntil(config: any, nodeId: string, stepId: string, issues: 
       message: 'Invalid interval format',
       field: 'interval',
       suggestion: 'Use format like: 1s, 500ms, 2m',
+      nodeId,
+      stepId,
+    });
+  }
+}
+
+function validateWaitFor(config: any, nodeId: string, stepId: string, issues: ValidationIssue[]): void {
+  const type = config.type || 'http';
+  if (type === 'http' && (!config.url || config.url.trim() === '')) {
+    issues.push({
+      id: `${nodeId}-no-url`,
+      severity: 'error',
+      message: 'URL is required for HTTP wait',
+      field: 'url',
+      nodeId,
+      stepId,
+    });
+  }
+  if (type === 'tcp') {
+    if (!config.host || config.host.trim() === '') {
+      issues.push({
+        id: `${nodeId}-no-host`,
+        severity: 'error',
+        message: 'Host is required for TCP wait',
+        field: 'host',
+        nodeId,
+        stepId,
+      });
+    }
+    if (!config.port) {
+      issues.push({
+        id: `${nodeId}-no-port`,
+        severity: 'error',
+        message: 'Port is required for TCP wait',
+        field: 'port',
+        nodeId,
+        stepId,
+      });
+    }
+  }
+}
+
+function validateDBPoll(config: any, nodeId: string, stepId: string, issues: ValidationIssue[]): void {
+  if (!config.connection || config.connection.trim() === '') {
+    issues.push({
+      id: `${nodeId}-no-connection`,
+      severity: 'error',
+      message: 'Database connection string is required',
+      field: 'connection',
+      nodeId,
+      stepId,
+    });
+  }
+  if (!config.query || config.query.trim() === '') {
+    issues.push({
+      id: `${nodeId}-no-query`,
+      severity: 'error',
+      message: 'SQL query is required',
+      field: 'query',
       nodeId,
       stepId,
     });

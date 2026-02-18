@@ -11,13 +11,15 @@ export type ActionType =
   | 'websocket'
   // Database
   | 'database_query'
+  | 'db_poll'
   // Messaging
-  | 'kafka_publish'
-  | 'kafka_consume'
+  | 'kafka_producer'
+  | 'kafka_consumer'
   // Control Flow
   | 'condition'
   | 'for_each'
   | 'parallel'
+  | 'wait_for'
   | 'wait_until'
   | 'run_flow'
   // Browser
@@ -143,7 +145,7 @@ export interface ParallelNodeData extends FlowNodeData {
 
 // WaitUntil node data - extends FlowNodeData with polling info
 export interface WaitUntilNodeData extends FlowNodeData {
-  action: 'wait_until';
+  action: 'wait_for';
   // Nested steps for polling
   nestedStepIds?: string[];
   nestedStepCount?: number;

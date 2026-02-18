@@ -99,22 +99,22 @@ export default function KafkaPublishForm({
         </p>
       </div>
 
-      {/* Value */}
+      {/* Payload */}
       <div className="space-y-2">
-        <Label htmlFor="value">Message Value</Label>
+        <Label htmlFor="payload">Message Payload</Label>
         <Textarea
-          id="value"
+          id="payload"
           value={
-            typeof config.value === 'object'
-              ? JSON.stringify(config.value, null, 2)
-              : (config.value as string) || ''
+            typeof config.payload === 'object'
+              ? JSON.stringify(config.payload, null, 2)
+              : (config.payload as string) || ''
           }
           onChange={(e) => {
             try {
               const parsed = JSON.parse(e.target.value);
-              onChange('value', parsed);
+              onChange('payload', parsed);
             } catch {
-              onChange('value', e.target.value);
+              onChange('payload', e.target.value);
             }
           }}
           placeholder={'{\n  "event": "user.created",\n  "userId": "${user_id}"\n}'}

@@ -45,6 +45,8 @@ import DatabaseQueryForm from './forms/DatabaseQueryForm';
 import KafkaPublishForm from './forms/KafkaPublishForm';
 import KafkaConsumeForm from './forms/KafkaConsumeForm';
 import WaitUntilForm from './forms/WaitUntilForm';
+import WaitForForm from './forms/WaitForForm';
+import DBPollForm from './forms/DBPollForm';
 import SubFlowForm from './forms/SubFlowForm';
 import ParallelForm from './forms/ParallelForm';
 import GrpcCallForm from './forms/GrpcCallForm';
@@ -65,8 +67,9 @@ const actionIcons: Record<ActionType, React.ElementType> = {
   grpc_stream: Globe,
   websocket: Globe,
   database_query: Database,
-  kafka_publish: MessageSquare,
-  kafka_consume: MessageSquare,
+  db_poll: Database,
+  kafka_producer: MessageSquare,
+  kafka_consumer: MessageSquare,
   browser: Globe,
   log: FileText,
   delay: Clock,
@@ -75,6 +78,7 @@ const actionIcons: Record<ActionType, React.ElementType> = {
   condition: GitBranch,
   for_each: Repeat,
   parallel: GitMerge,
+  wait_for: Clock,
   wait_until: Clock,
   run_flow: GitBranch,
   mock_server_start: Server,
@@ -333,16 +337,20 @@ function ActionConfig({
       return <WebSocketForm config={config} onChange={onConfigChange} />;
     case 'database_query':
       return <DatabaseQueryForm config={config} onChange={onConfigChange} />;
-    case 'kafka_publish':
+    case 'kafka_producer':
       return <KafkaPublishForm config={config} onChange={onConfigChange} />;
-    case 'kafka_consume':
+    case 'kafka_consumer':
       return <KafkaConsumeForm config={config} onChange={onConfigChange} />;
     case 'browser':
       return <BrowserForm config={config} onChange={onConfigChange} />;
     case 'parallel':
       return <ParallelForm config={config} onChange={onConfigChange} />;
+    case 'wait_for':
+      return <WaitForForm config={config} onChange={onConfigChange} />;
     case 'wait_until':
       return <WaitUntilForm config={config} onChange={onConfigChange} />;
+    case 'db_poll':
+      return <DBPollForm config={config} onChange={onConfigChange} />;
     case 'run_flow':
       return <SubFlowForm config={config} onChange={onConfigChange} />;
     case 'log':

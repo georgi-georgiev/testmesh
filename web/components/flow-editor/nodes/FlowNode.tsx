@@ -37,8 +37,9 @@ const actionIcons: Record<ActionType, React.ElementType> = {
   grpc_stream: Network,
   websocket: Radio,
   database_query: Database,
-  kafka_publish: MessageSquare,
-  kafka_consume: MessageSquare,
+  db_poll: Database,
+  kafka_producer: MessageSquare,
+  kafka_consumer: MessageSquare,
   browser: Chrome,
   log: FileText,
   delay: Clock,
@@ -47,6 +48,7 @@ const actionIcons: Record<ActionType, React.ElementType> = {
   condition: GitBranch,
   for_each: Repeat,
   parallel: GitMerge,
+  wait_for: Timer,
   wait_until: Timer,
   run_flow: GitBranch,
   mock_server_start: Server,
@@ -66,6 +68,11 @@ const actionColors: Record<ActionType, { bg: string; border: string; icon: strin
     icon: 'text-blue-500',
   },
   database_query: {
+    bg: 'bg-purple-50 dark:bg-purple-950',
+    border: 'border-purple-200 dark:border-purple-800',
+    icon: 'text-purple-500',
+  },
+  db_poll: {
     bg: 'bg-purple-50 dark:bg-purple-950',
     border: 'border-purple-200 dark:border-purple-800',
     icon: 'text-purple-500',
@@ -135,12 +142,12 @@ const actionColors: Record<ActionType, { bg: string; border: string; icon: strin
     border: 'border-blue-200 dark:border-blue-800',
     icon: 'text-blue-500',
   },
-  kafka_publish: {
+  kafka_producer: {
     bg: 'bg-violet-50 dark:bg-violet-950',
     border: 'border-violet-200 dark:border-violet-800',
     icon: 'text-violet-500',
   },
-  kafka_consume: {
+  kafka_consumer: {
     bg: 'bg-violet-50 dark:bg-violet-950',
     border: 'border-violet-200 dark:border-violet-800',
     icon: 'text-violet-500',
@@ -154,6 +161,11 @@ const actionColors: Record<ActionType, { bg: string; border: string; icon: strin
     bg: 'bg-cyan-50 dark:bg-cyan-950',
     border: 'border-cyan-200 dark:border-cyan-800',
     icon: 'text-cyan-500',
+  },
+  wait_for: {
+    bg: 'bg-fuchsia-50 dark:bg-fuchsia-950',
+    border: 'border-fuchsia-200 dark:border-fuchsia-800',
+    icon: 'text-fuchsia-500',
   },
   wait_until: {
     bg: 'bg-fuchsia-50 dark:bg-fuchsia-950',

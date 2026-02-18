@@ -475,6 +475,12 @@ func (e *Executor) getActionHandler(actionType string) (actions.Handler, error) 
 		return actions.NewContractVerifyHandler(verifier, differ, e.logger), nil
 	case "kafka_consumer":
 		return actions.NewKafkaConsumerHandler(e.logger), nil
+	case "kafka_producer":
+		return actions.NewKafkaProducerHandler(e.logger), nil
+	case "wait_for":
+		return actions.NewWaitForHandler(e.logger), nil
+	case "db_poll":
+		return actions.NewDBPollHandler(e.logger), nil
 	case "websocket":
 		return actions.NewWebSocketHandler(e.logger), nil
 	case "grpc":

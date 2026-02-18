@@ -95,15 +95,15 @@ export default function KafkaConsumeForm({
         </p>
       </div>
 
-      {/* Max Messages */}
+      {/* Count */}
       <div className="space-y-2">
-        <Label htmlFor="max_messages">Max Messages</Label>
+        <Label htmlFor="count">Max Messages</Label>
         <Input
-          id="max_messages"
+          id="count"
           type="number"
           min="1"
-          value={(config.max_messages as number) || 1}
-          onChange={(e) => onChange('max_messages', parseInt(e.target.value))}
+          value={(config.count as number) || 1}
+          onChange={(e) => onChange('count', parseInt(e.target.value))}
           placeholder="1"
         />
       </div>
