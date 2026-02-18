@@ -75,3 +75,15 @@ restart: down up ## Restart all services
 
 status: ## Show status of services
 	docker-compose ps
+
+docs-dev: ## Start documentation site
+	@echo "$(GREEN)Starting documentation site on http://localhost:3001$(NC)"
+	cd docs-site && npm run dev
+
+docs-build: ## Build documentation site
+	@echo "$(GREEN)Building documentation site...$(NC)"
+	cd docs-site && npm run build
+
+docs-install: ## Install documentation dependencies
+	@echo "$(GREEN)Installing documentation dependencies...$(NC)"
+	cd docs-site && npm install
