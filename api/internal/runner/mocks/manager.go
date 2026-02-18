@@ -1,15 +1,18 @@
 package mocks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"strings"
 	"sync"
+	"text/template"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -18,33 +21,74 @@ import (
 
 // Manager manages mock server instances
 type Manager struct {
-	repo     *repository.MockRepository
-	logger   *zap.Logger
-	servers  map[uuid.UUID]*ServerInstance
-	portPool *PortPool
-	mu       sync.RWMutex
+	repo    *repository.MockRepository
+	logger  *zap.Logger
+	servers map[uuid.UUID]*ServerInstance
+	baseURL string
+	mu      sync.RWMutex
 }
 
-// ServerInstance represents a running mock server
+// ServerInstance represents an in-memory mock server (no TCP listener)
 type ServerInstance struct {
-	ID       uuid.UUID
-	Server   *http.Server
-	Matcher  *EndpointMatcher
-	State    *StateManager
-	Listener net.Listener
+	ID          uuid.UUID
+	ExecutionID *uuid.UUID
+	BaseURL     string
+	Matcher     *EndpointMatcher
+	State       *StateManager
 }
 
 // NewManager creates a new mock server manager
-func NewManager(repo *repository.MockRepository, logger *zap.Logger) *Manager {
+func NewManager(repo *repository.MockRepository, logger *zap.Logger, baseURL string) *Manager {
 	return &Manager{
-		repo:     repo,
-		logger:   logger,
-		servers:  make(map[uuid.UUID]*ServerInstance),
-		portPool: NewPortPool(10000, 20000), // Port range 10000-20000
+		repo:    repo,
+		logger:  logger,
+		servers: make(map[uuid.UUID]*ServerInstance),
+		baseURL: baseURL,
 	}
 }
 
-// StartServer starts a new mock server
+// RestoreRunningServers re-registers all DB-persisted running servers into the in-memory map.
+// Call this once at startup so servers created in previous process lifetimes keep working.
+func (m *Manager) RestoreRunningServers() {
+	servers, _, err := m.repo.ListServers(nil, models.MockServerStatusRunning, 10000, 0)
+	if err != nil {
+		m.logger.Error("Failed to list running servers for restore", zap.Error(err))
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	count := 0
+	for _, s := range servers {
+		if _, exists := m.servers[s.ID]; exists {
+			continue
+		}
+
+		endpoints, err := m.repo.ListEndpoints(s.ID)
+		if err != nil {
+			m.logger.Warn("Failed to load endpoints for server during restore",
+				zap.String("server_id", s.ID.String()), zap.Error(err))
+			continue
+		}
+
+		instance := &ServerInstance{
+			ID:          s.ID,
+			ExecutionID: s.ExecutionID,
+			BaseURL:     s.BaseURL,
+			Matcher:     NewEndpointMatcher(endpoints, m.logger),
+			State:       NewStateManager(s.ID, m.repo, m.logger),
+		}
+		m.servers[s.ID] = instance
+		count++
+	}
+
+	if count > 0 {
+		m.logger.Info("Restored running mock servers", zap.Int("count", count))
+	}
+}
+
+// StartServer starts a new mock server (in-memory only, no TCP listener)
 func (m *Manager) StartServer(ctx context.Context, serverID uuid.UUID, name string, executionID *uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -54,24 +98,19 @@ func (m *Manager) StartServer(ctx context.Context, serverID uuid.UUID, name stri
 		return fmt.Errorf("server %s already running", serverID)
 	}
 
-	// Allocate port
-	port, err := m.portPool.Allocate(serverID)
-	if err != nil {
-		return fmt.Errorf("failed to allocate port: %w", err)
-	}
+	serverBaseURL := fmt.Sprintf("%s/mocks/%s", m.baseURL, serverID)
 
 	// Create server record
 	server := &models.MockServer{
 		ID:          serverID,
 		ExecutionID: executionID,
 		Name:        name,
-		Port:        port,
-		BaseURL:     fmt.Sprintf("http://localhost:%d", port),
+		Port:        0, // no dedicated port; routing is through main server
+		BaseURL:     serverBaseURL,
 		Status:      models.MockServerStatusStarting,
 	}
 
 	if err := m.repo.CreateServer(server); err != nil {
-		m.portPool.Release(serverID)
 		return fmt.Errorf("failed to create server record: %w", err)
 	}
 
@@ -85,36 +124,15 @@ func (m *Manager) StartServer(ctx context.Context, serverID uuid.UUID, name stri
 	matcher := NewEndpointMatcher(endpoints, m.logger)
 	stateManager := NewStateManager(serverID, m.repo, m.logger)
 
-	// Create HTTP server
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		m.portPool.Release(serverID)
-		return fmt.Errorf("failed to start listener: %w", err)
-	}
-
-	handler := m.createHandler(serverID, matcher, stateManager)
-	httpServer := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
 	// Store instance
 	instance := &ServerInstance{
-		ID:       serverID,
-		Server:   httpServer,
-		Matcher:  matcher,
-		State:    stateManager,
-		Listener: listener,
+		ID:          serverID,
+		ExecutionID: executionID,
+		BaseURL:     serverBaseURL,
+		Matcher:     matcher,
+		State:       stateManager,
 	}
 	m.servers[serverID] = instance
-
-	// Start server in goroutine
-	go func() {
-		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			m.logger.Error("Mock server error", zap.Error(err), zap.String("server_id", serverID.String()))
-		}
-	}()
 
 	// Update server status
 	now := time.Now()
@@ -127,7 +145,7 @@ func (m *Manager) StartServer(ctx context.Context, serverID uuid.UUID, name stri
 	m.logger.Info("Mock server started",
 		zap.String("server_id", serverID.String()),
 		zap.String("name", name),
-		zap.Int("port", port),
+		zap.String("base_url", serverBaseURL),
 		zap.Int("endpoints", len(endpoints)),
 	)
 
@@ -139,26 +157,9 @@ func (m *Manager) StopServer(serverID uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	instance, exists := m.servers[serverID]
-	if !exists {
+	if _, exists := m.servers[serverID]; !exists {
 		return fmt.Errorf("server %s not running", serverID)
 	}
-
-	// Shutdown HTTP server
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := instance.Server.Shutdown(ctx); err != nil {
-		m.logger.Warn("Error shutting down mock server", zap.Error(err))
-	}
-
-	// Close listener
-	if err := instance.Listener.Close(); err != nil {
-		m.logger.Warn("Error closing listener", zap.Error(err))
-	}
-
-	// Release port
-	m.portPool.Release(serverID)
 
 	// Update server record
 	server, err := m.repo.GetServerByID(serverID)
@@ -179,6 +180,28 @@ func (m *Manager) StopServer(serverID uuid.UUID) error {
 	m.logger.Info("Mock server stopped", zap.String("server_id", serverID.String()))
 
 	return nil
+}
+
+// StopServersByExecution stops all mock servers belonging to the given execution
+func (m *Manager) StopServersByExecution(executionID uuid.UUID) error {
+	m.mu.RLock()
+	var toStop []uuid.UUID
+	for id, instance := range m.servers {
+		if instance.ExecutionID != nil && *instance.ExecutionID == executionID {
+			toStop = append(toStop, id)
+		}
+	}
+	m.mu.RUnlock()
+
+	var lastErr error
+	for _, id := range toStop {
+		if err := m.StopServer(id); err != nil {
+			lastErr = err
+			m.logger.Error("Failed to stop server", zap.Error(err), zap.String("server_id", id.String()))
+		}
+	}
+
+	return lastErr
 }
 
 // AddEndpoint adds a new endpoint to a running mock server
@@ -241,157 +264,210 @@ func (m *Manager) StopAllServers() error {
 	return lastErr
 }
 
-// createHandler creates the HTTP handler for a mock server
-func (m *Manager) createHandler(serverID uuid.UUID, matcher *EndpointMatcher, stateManager *StateManager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Log request
-		reqBody, _ := io.ReadAll(r.Body)
-		r.Body.Close()
-
-		// Convert headers to map
-		headers := make(map[string]interface{})
-		for k, v := range r.Header {
-			if len(v) == 1 {
-				headers[k] = v[0]
-			} else {
-				headers[k] = v
-			}
+// GinHandler returns a Gin handler that routes requests to the appropriate mock server instance
+func (m *Manager) GinHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		serverIDStr := c.Param("server_id")
+		serverID, err := uuid.Parse(serverIDStr)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "invalid server ID"})
+			return
 		}
 
-		// Convert query params to map
-		queryParams := make(map[string]interface{})
-		for k, v := range r.URL.Query() {
-			if len(v) == 1 {
-				queryParams[k] = v[0]
-			} else {
-				queryParams[k] = v
-			}
+		m.mu.RLock()
+		instance, exists := m.servers[serverID]
+		m.mu.RUnlock()
+
+		if !exists {
+			c.JSON(http.StatusNotFound, gin.H{"error": "mock server not found or stopped"})
+			return
 		}
 
-		// Match endpoint
-		endpoint, matched := matcher.Match(r.Method, r.URL.Path, headers, queryParams, reqBody)
-
-		mockRequest := &models.MockRequest{
-			MockServerID: serverID,
-			Method:       r.Method,
-			Path:         r.URL.Path,
-			Headers:      headers,
-			QueryParams:  queryParams,
-			Body:         string(reqBody),
-			Matched:      matched,
-			ResponseCode: http.StatusNotFound,
+		// *path param includes the leading slash, e.g. "/api/users"
+		path := c.Param("path")
+		if path == "" {
+			path = "/"
 		}
 
-		var response *models.ResponseConfig
-		if matched && endpoint != nil {
-			mockRequest.EndpointID = &endpoint.ID
-			response = &endpoint.ResponseConfig
+		m.handleRequest(serverID, instance, c.Request.Method, path, c.Request, c.Writer)
+	}
+}
 
-			// Handle state updates
-			if endpoint.StateConfig != nil {
-				if err := stateManager.UpdateState(endpoint.StateConfig); err != nil {
-					m.logger.Error("Failed to update state", zap.Error(err))
-				}
-			}
+// templateContext holds request data available inside response templates.
+// Usage in JSON/text bodies:
+//
+//	{{.path.id}}            — path parameter named "id"
+//	{{.query.page}}         — query parameter named "page"
+//	{{.headers.Authorization}} — request header
+//	{{.body.amount}}        — field from a JSON request body
+type templateContext map[string]interface{}
+
+// renderTemplate applies Go text/template to s using ctx. If s contains no
+// template directives the string is returned unchanged; errors are logged and
+// the original string is returned as a fallback.
+func (m *Manager) renderTemplate(s string, ctx templateContext) string {
+	if !strings.Contains(s, "{{") {
+		return s
+	}
+	tmpl, err := template.New("").Option("missingkey=zero").Parse(s)
+	if err != nil {
+		m.logger.Warn("Failed to parse response template", zap.Error(err))
+		return s
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, ctx); err != nil {
+		m.logger.Warn("Failed to execute response template", zap.Error(err))
+		return s
+	}
+	return buf.String()
+}
+
+// renderBodyJSON marshals bodyJSON to a JSON string, applies template rendering,
+// then unmarshals the result. Returns nil on any error so the caller can fall
+// through to other body types.
+func (m *Manager) renderBodyJSON(bodyJSON map[string]interface{}, ctx templateContext) []byte {
+	raw, err := json.Marshal(bodyJSON)
+	if err != nil {
+		return nil
+	}
+	rendered := m.renderTemplate(string(raw), ctx)
+	// Validate the rendered string is still valid JSON before sending.
+	var v interface{}
+	if err := json.Unmarshal([]byte(rendered), &v); err != nil {
+		m.logger.Warn("Rendered template produced invalid JSON, falling back to unrendered body", zap.Error(err))
+		return raw
+	}
+	return []byte(rendered)
+}
+
+// extractPathParams compares an endpoint path template (e.g. /api/users/:id)
+// against the actual request path and returns a map of parameter name → value.
+func extractPathParams(endpointPath, requestPath string) map[string]string {
+	params := map[string]string{}
+	endParts := strings.Split(strings.Trim(endpointPath, "/"), "/")
+	reqParts := strings.Split(strings.Trim(requestPath, "/"), "/")
+	if len(endParts) != len(reqParts) {
+		return params
+	}
+	for i, part := range endParts {
+		if strings.HasPrefix(part, ":") {
+			params[part[1:]] = reqParts[i]
+		}
+	}
+	return params
+}
+
+// handleRequest processes an incoming request against a mock server instance
+func (m *Manager) handleRequest(serverID uuid.UUID, instance *ServerInstance, method, path string, r *http.Request, w http.ResponseWriter) {
+	// Read request body
+	reqBody, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+
+	// Convert headers to map
+	headers := make(map[string]interface{})
+	for k, v := range r.Header {
+		if len(v) == 1 {
+			headers[k] = v[0]
 		} else {
-			// Default 404 response
-			response = &models.ResponseConfig{
-				StatusCode: http.StatusNotFound,
-				BodyText:   "No matching endpoint found",
+			headers[k] = v
+		}
+	}
+
+	// Convert query params to map
+	queryParams := make(map[string]interface{})
+	for k, v := range r.URL.Query() {
+		if len(v) == 1 {
+			queryParams[k] = v[0]
+		} else {
+			queryParams[k] = v
+		}
+	}
+
+	// Match endpoint
+	endpoint, matched := instance.Matcher.Match(method, path, headers, queryParams, reqBody)
+
+	mockRequest := &models.MockRequest{
+		MockServerID: serverID,
+		Method:       method,
+		Path:         path,
+		Headers:      headers,
+		QueryParams:  queryParams,
+		Body:         string(reqBody),
+		Matched:      matched,
+		ResponseCode: http.StatusNotFound,
+	}
+
+	var response *models.ResponseConfig
+	var tmplCtx templateContext
+
+	if matched && endpoint != nil {
+		mockRequest.EndpointID = &endpoint.ID
+		response = &endpoint.ResponseConfig
+
+		// Build template context from request data
+		pathParams := extractPathParams(endpoint.Path, path)
+		var bodyJSON map[string]interface{}
+		_ = json.Unmarshal(reqBody, &bodyJSON) // best-effort; nil if not JSON
+		tmplCtx = templateContext{
+			"path":    pathParams,
+			"query":   queryParams,
+			"headers": headers,
+			"body":    bodyJSON,
+		}
+
+		// Handle state updates
+		if endpoint.StateConfig != nil {
+			if err := instance.State.UpdateState(endpoint.StateConfig); err != nil {
+				m.logger.Error("Failed to update state", zap.Error(err))
 			}
 		}
-
-		// Apply response delay
-		if response.DelayMs > 0 {
-			time.Sleep(time.Duration(response.DelayMs) * time.Millisecond)
+	} else {
+		response = &models.ResponseConfig{
+			StatusCode: http.StatusNotFound,
+			BodyText:   "No matching endpoint found",
 		}
+		tmplCtx = templateContext{}
+	}
 
-		// Set response headers
-		for k, v := range response.Headers {
-			w.Header().Set(k, v)
-		}
+	// Apply response delay
+	if response.DelayMs > 0 {
+		time.Sleep(time.Duration(response.DelayMs) * time.Millisecond)
+	}
 
-		// Set status code
-		mockRequest.ResponseCode = response.StatusCode
-		w.WriteHeader(response.StatusCode)
+	// Set response headers
+	for k, v := range response.Headers {
+		w.Header().Set(k, v)
+	}
 
-		// Write response body
-		if response.BodyJSON != nil {
+	// Set status code
+	mockRequest.ResponseCode = response.StatusCode
+	w.WriteHeader(response.StatusCode)
+
+	// Write response body — apply template rendering to all body types
+	if response.BodyJSON != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(m.renderBodyJSON(response.BodyJSON, tmplCtx))
+	} else if response.BodyText != "" {
+		w.Write([]byte(m.renderTemplate(response.BodyText, tmplCtx)))
+	} else if response.Body != nil {
+		if bodyBytes, err := json.Marshal(response.Body); err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response.BodyJSON)
-		} else if response.BodyText != "" {
-			w.Write([]byte(response.BodyText))
-		} else if response.Body != nil {
-			if bodyBytes, err := json.Marshal(response.Body); err == nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(bodyBytes)
-			}
-		}
-
-		// Log request to database (async)
-		go func() {
-			if err := m.repo.CreateRequest(mockRequest); err != nil {
-				m.logger.Error("Failed to log mock request", zap.Error(err))
-			}
-		}()
-
-		m.logger.Debug("Mock request handled",
-			zap.String("method", r.Method),
-			zap.String("path", r.URL.Path),
-			zap.Bool("matched", matched),
-			zap.Int("status", response.StatusCode),
-		)
-	}
-}
-
-// PortPool manages port allocation
-type PortPool struct {
-	min       int
-	max       int
-	allocated map[uuid.UUID]int
-	used      map[int]bool
-	mu        sync.Mutex
-}
-
-// NewPortPool creates a new port pool
-func NewPortPool(min, max int) *PortPool {
-	return &PortPool{
-		min:       min,
-		max:       max,
-		allocated: make(map[uuid.UUID]int),
-		used:      make(map[int]bool),
-	}
-}
-
-// Allocate allocates a port for a server
-func (p *PortPool) Allocate(serverID uuid.UUID) (int, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Check if already allocated
-	if port, exists := p.allocated[serverID]; exists {
-		return port, nil
-	}
-
-	// Find available port
-	for port := p.min; port <= p.max; port++ {
-		if !p.used[port] {
-			p.allocated[serverID] = port
-			p.used[port] = true
-			return port, nil
+			rendered := m.renderTemplate(string(bodyBytes), tmplCtx)
+			w.Write([]byte(rendered))
 		}
 	}
 
-	return 0, fmt.Errorf("no available ports in range %d-%d", p.min, p.max)
-}
+	// Log request to database (async)
+	go func() {
+		if err := m.repo.CreateRequest(mockRequest); err != nil {
+			m.logger.Error("Failed to log mock request", zap.Error(err))
+		}
+	}()
 
-// Release releases a port
-func (p *PortPool) Release(serverID uuid.UUID) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if port, exists := p.allocated[serverID]; exists {
-		delete(p.allocated, serverID)
-		delete(p.used, port)
-	}
+	m.logger.Debug("Mock request handled",
+		zap.String("method", method),
+		zap.String("path", path),
+		zap.Bool("matched", matched),
+		zap.Int("status", response.StatusCode),
+	)
 }

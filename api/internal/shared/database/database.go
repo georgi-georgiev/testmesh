@@ -1069,9 +1069,9 @@ func seedSampleData(db *gorm.DB) {
 	db.Exec(`
 		INSERT INTO mocks.mock_servers (id, name, port, base_url, status, started_at)
 		VALUES
-			('00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 9001, 'http://localhost:9001', 'running', NOW() - INTERVAL '1 day'),
-			('00000000-0000-0000-0007-000000000002'::uuid, 'User Service Mock', 9002, 'http://localhost:9002', 'running', NOW() - INTERVAL '2 days'),
-			('00000000-0000-0000-0007-000000000003'::uuid, 'Notification Service Mock', 9003, 'http://localhost:9003', 'stopped', NOW() - INTERVAL '3 days')
+			('00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000001', 'running', NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-0007-000000000002'::uuid, 'User Service Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000002', 'running', NOW() - INTERVAL '2 days'),
+			('00000000-0000-0000-0007-000000000003'::uuid, 'Notification Service Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000003', 'stopped', NOW() - INTERVAL '3 days')
 		ON CONFLICT (id) DO NOTHING;
 	`)
 
@@ -1079,12 +1079,12 @@ func seedSampleData(db *gorm.DB) {
 	db.Exec(`
 		INSERT INTO mocks.mock_endpoints (id, mock_server_id, path, method, response_config, priority)
 		VALUES
-			('00000000-0000-0000-0008-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments', 'POST', '{"status": 200, "body": {"id": "pay_123", "status": "succeeded", "amount": 1000}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments/:id', 'GET', '{"status": 200, "body": {"id": "{{params.id}}", "status": "succeeded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000003'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/refunds', 'POST', '{"status": 200, "body": {"id": "ref_456", "status": "pending"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000004'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users', 'GET', '{"status": 200, "body": [{"id": "user-1", "name": "John Doe"}, {"id": "user-2", "name": "Jane Smith"}], "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000005'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users/:id', 'GET', '{"status": 200, "body": {"id": "{{params.id}}", "name": "Test User"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000006'::uuid, '00000000-0000-0000-0007-000000000003'::uuid, '/api/notifications/email', 'POST', '{"status": 202, "body": {"message_id": "msg_789", "status": "queued"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0)
+			('00000000-0000-0000-0008-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments', 'POST', '{"status_code": 200, "body_json": {"id": "pay_123", "status": "succeeded", "amount": 1000}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments/:id', 'GET', '{"status_code": 200, "body_json": {"id": "pay_123", "status": "succeeded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000003'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/refunds', 'POST', '{"status_code": 200, "body_json": {"id": "ref_456", "status": "pending"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000004'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users', 'GET', '{"status_code": 200, "body_json": {"users": [{"id": "user-1", "name": "John Doe"}, {"id": "user-2", "name": "Jane Smith"}]}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000005'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users/:id', 'GET', '{"status_code": 200, "body_json": {"id": "user-1", "name": "Test User"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('00000000-0000-0000-0008-000000000006'::uuid, '00000000-0000-0000-0007-000000000003'::uuid, '/api/notifications/email', 'POST', '{"status_code": 202, "body_json": {"message_id": "msg_789", "status": "queued"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0)
 		ON CONFLICT (id) DO NOTHING;
 	`)
 

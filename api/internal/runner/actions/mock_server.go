@@ -3,7 +3,6 @@ package actions
 import (
 	"context"
 	"fmt"
-	"net"
 
 	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
@@ -86,7 +85,7 @@ func (h *MockServerStartHandler) Execute(ctx context.Context, config map[string]
 	output := models.OutputData{
 		"server_id": serverID.String(),
 		"name":      name,
-		"base_url":  fmt.Sprintf("http://localhost:%d", server.Listener.Addr().(*net.TCPAddr).Port),
+		"base_url":  server.BaseURL,
 		"status":    "running",
 	}
 

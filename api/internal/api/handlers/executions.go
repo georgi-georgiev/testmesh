@@ -19,20 +19,20 @@ type ExecutionHandler struct {
 	execRepo     *repository.ExecutionRepository
 	flowRepo     *repository.FlowRepository
 	envRepo      *repository.EnvironmentRepository
-	mockRepo     *repository.MockRepository
 	contractRepo *repository.ContractRepository
+	mockManager  *mocks.Manager
 	logger       *zap.Logger
 	wsHub        runner.WSHub
 }
 
 // NewExecutionHandler creates a new execution handler
-func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, envRepo *repository.EnvironmentRepository, mockRepo *repository.MockRepository, contractRepo *repository.ContractRepository, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
+func NewExecutionHandler(execRepo *repository.ExecutionRepository, flowRepo *repository.FlowRepository, envRepo *repository.EnvironmentRepository, contractRepo *repository.ContractRepository, mockManager *mocks.Manager, logger *zap.Logger, wsHub runner.WSHub) *ExecutionHandler {
 	return &ExecutionHandler{
 		execRepo:     execRepo,
 		flowRepo:     flowRepo,
 		envRepo:      envRepo,
-		mockRepo:     mockRepo,
 		contractRepo: contractRepo,
+		mockManager:  mockManager,
 		logger:       logger,
 		wsHub:        wsHub,
 	}
@@ -97,12 +97,11 @@ func (h *ExecutionHandler) executeFlow(execution *models.Execution, flow *models
 	// Merge environment variables into the execution context
 	mergedVars := h.mergeEnvironmentVariables(environmentRef, workspaceID, variables)
 
-	// Create mock manager for this execution
-	mockManager := mocks.NewManager(h.mockRepo, h.logger)
-	defer mockManager.StopAllServers() // Ensure all mock servers are stopped
+	// Ensure all mock servers for this execution are stopped when done
+	defer h.mockManager.StopServersByExecution(execution.ID)
 
 	// Execute flow using the runner
-	executor := runner.NewExecutor(h.execRepo, h.contractRepo, h.logger, h.wsHub, mockManager)
+	executor := runner.NewExecutor(h.execRepo, h.contractRepo, h.logger, h.wsHub, h.mockManager)
 	err := executor.Execute(execution, &flow.Definition, mergedVars)
 
 	// Update execution status

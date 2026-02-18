@@ -42,9 +42,27 @@ export const mockServerApi = {
     return response.data;
   },
 
+  // Create a new standalone mock server
+  create: async (data: { name: string }): Promise<MockServer> => {
+    const response = await apiClient.post<MockServer>('/api/v1/mock-servers', data);
+    return response.data;
+  },
+
   // Delete mock server
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/api/v1/mock-servers/${id}`);
+  },
+
+  // Start a stopped mock server
+  start: async (id: string): Promise<MockServer> => {
+    const response = await apiClient.post<MockServer>(`/api/v1/mock-servers/${id}/start`);
+    return response.data;
+  },
+
+  // Stop a running mock server
+  stop: async (id: string): Promise<MockServer> => {
+    const response = await apiClient.post<MockServer>(`/api/v1/mock-servers/${id}/stop`);
+    return response.data;
   },
 
   // Get endpoints for a mock server

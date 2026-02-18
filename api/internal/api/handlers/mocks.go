@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
 	"github.com/google/uuid"
@@ -13,15 +15,17 @@ import (
 
 // MockHandler handles mock server-related requests
 type MockHandler struct {
-	repo   *repository.MockRepository
-	logger *zap.Logger
+	repo        *repository.MockRepository
+	mockManager *mocks.Manager
+	logger      *zap.Logger
 }
 
 // NewMockHandler creates a new mock handler
-func NewMockHandler(repo *repository.MockRepository, logger *zap.Logger) *MockHandler {
+func NewMockHandler(repo *repository.MockRepository, mockManager *mocks.Manager, logger *zap.Logger) *MockHandler {
 	return &MockHandler{
-		repo:   repo,
-		logger: logger,
+		repo:        repo,
+		mockManager: mockManager,
+		logger:      logger,
 	}
 }
 
@@ -407,4 +411,83 @@ func (h *MockHandler) DeleteRequests(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "request logs cleared"})
+}
+
+// CreateServer handles POST /api/v1/mock-servers
+func (h *MockHandler) CreateServer(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	serverID := uuid.New()
+	if err := h.mockManager.StartServer(context.Background(), serverID, req.Name, nil); err != nil {
+		h.logger.Error("Failed to create mock server", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create mock server"})
+		return
+	}
+
+	server, err := h.repo.GetServerByID(serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve created server"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, server)
+}
+
+// StartServer handles POST /api/v1/mock-servers/:id/start
+func (h *MockHandler) StartServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	server, err := h.repo.GetServerByID(serverID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "server not found"})
+		return
+	}
+
+	if err := h.mockManager.StartServer(context.Background(), serverID, server.Name, server.ExecutionID); err != nil {
+		h.logger.Error("Failed to start mock server", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start mock server: " + err.Error()})
+		return
+	}
+
+	updated, err := h.repo.GetServerByID(serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve server"})
+		return
+	}
+
+	c.JSON(http.StatusOK, updated)
+}
+
+// StopServer handles POST /api/v1/mock-servers/:id/stop
+func (h *MockHandler) StopServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid server ID"})
+		return
+	}
+
+	if err := h.mockManager.StopServer(serverID); err != nil {
+		h.logger.Error("Failed to stop mock server", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stop mock server: " + err.Error()})
+		return
+	}
+
+	server, err := h.repo.GetServerByID(serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve server"})
+		return
+	}
+
+	c.JSON(http.StatusOK, server)
 }

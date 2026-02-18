@@ -73,12 +73,47 @@ export function useMockServerStates(serverId: string) {
   });
 }
 
+export function useCreateMockServer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { name: string }) => mockServerApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.lists() });
+    },
+  });
+}
+
 export function useDeleteMockServer() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) => mockServerApi.delete(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.lists() });
+    },
+  });
+}
+
+export function useStartMockServer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => mockServerApi.start(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.lists() });
+    },
+  });
+}
+
+export function useStopMockServer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => mockServerApi.stop(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: mockServerKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: mockServerKeys.lists() });
     },
   });

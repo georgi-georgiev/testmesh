@@ -89,7 +89,7 @@ func (m *EndpointMatcher) matchEndpoint(endpoint *models.MockEndpoint, method, p
 
 // matchPath matches the request path
 func (m *EndpointMatcher) matchPath(endpointPath, pathPattern, requestPath string) bool {
-	// If path pattern is specified, use regex matching
+	// If explicit regex pattern is specified, use it
 	if pathPattern != "" {
 		matched, err := regexp.MatchString(pathPattern, requestPath)
 		if err != nil {
@@ -99,12 +99,30 @@ func (m *EndpointMatcher) matchPath(endpointPath, pathPattern, requestPath strin
 		return matched
 	}
 
-	// Otherwise, exact match or wildcard match
+	// Exact match
 	if endpointPath == requestPath {
 		return true
 	}
 
-	// Support simple wildcard matching (e.g., /api/users/*)
+	// :param segment matching (e.g. /api/users/:id matches /api/users/123)
+	if strings.Contains(endpointPath, ":") {
+		endParts := strings.Split(strings.Trim(endpointPath, "/"), "/")
+		reqParts := strings.Split(strings.Trim(requestPath, "/"), "/")
+		if len(endParts) != len(reqParts) {
+			return false
+		}
+		for i, part := range endParts {
+			if strings.HasPrefix(part, ":") {
+				continue // path parameter, any value matches
+			}
+			if part != reqParts[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Wildcard matching (e.g. /api/users/*)
 	if strings.Contains(endpointPath, "*") {
 		pattern := strings.ReplaceAll(endpointPath, "*", ".*")
 		matched, _ := regexp.MatchString("^"+pattern+"$", requestPath)

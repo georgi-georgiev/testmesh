@@ -613,14 +613,13 @@ func seedMockServers(db *gorm.DB) {
 
 	serverData := []struct {
 		name   string
-		port   int
 		status models.MockServerStatus
 	}{
-		{"User API Mock", 9001, models.MockServerStatusRunning},
-		{"Payment Gateway Mock", 9002, models.MockServerStatusRunning},
-		{"Email Service Mock", 9003, models.MockServerStatusStopped},
-		{"Notification Mock", 9004, models.MockServerStatusRunning},
-		{"Legacy API Mock", 9005, models.MockServerStatusFailed},
+		{"User API Mock", models.MockServerStatusRunning},
+		{"Payment Gateway Mock", models.MockServerStatusRunning},
+		{"Email Service Mock", models.MockServerStatusStopped},
+		{"Notification Mock", models.MockServerStatusRunning},
+		{"Legacy API Mock", models.MockServerStatusFailed},
 	}
 
 	for _, s := range serverData {
@@ -631,11 +630,12 @@ func seedMockServers(db *gorm.DB) {
 			stoppedAt = &stopped
 		}
 
+		serverID := uuid.New()
 		server := models.MockServer{
-			ID:        uuid.New(),
+			ID:        serverID,
 			Name:      s.name,
-			Port:      s.port,
-			BaseURL:   fmt.Sprintf("http://localhost:%d", s.port),
+			Port:      0,
+			BaseURL:   fmt.Sprintf("http://localhost:5016/mocks/%s", serverID),
 			Status:    s.status,
 			StartedAt: &startedAt,
 			StoppedAt: stoppedAt,
@@ -662,50 +662,113 @@ func seedMockServers(db *gorm.DB) {
 	log.Printf("  Created %d mock servers", len(mockServers))
 }
 
+type endpointDef struct {
+	path        string
+	method      string
+	status      int
+	matchConfig models.MatchConfig
+	bodyJSON    map[string]interface{}
+	bodyText    string
+}
+
 func seedMockEndpoints(db *gorm.DB, server models.MockServer) {
-	endpoints := []struct {
-		path   string
-		method string
-		status int
-	}{
-		{"/api/users", "GET", 200},
-		{"/api/users/:id", "GET", 200},
-		{"/api/users", "POST", 201},
-		{"/api/users/:id", "PUT", 200},
-		{"/api/users/:id", "DELETE", 204},
-		{"/api/health", "GET", 200},
-		{"/api/login", "POST", 200},
-		{"/api/logout", "POST", 200},
+	jsonHeader := map[string]string{"Content-Type": "application/json"}
+
+	endpoints := []endpointDef{
+		// ── Static endpoints ──────────────────────────────────────────────────
+		{
+			path: "/api/users", method: "GET", status: 200,
+			bodyJSON: map[string]interface{}{
+				"users": []interface{}{
+					map[string]interface{}{"id": "1", "name": "Alice"},
+					map[string]interface{}{"id": "2", "name": "Bob"},
+				},
+				"total": 2,
+			},
+		},
+		{
+			path: "/api/health", method: "GET", status: 200,
+			bodyJSON: map[string]interface{}{
+				"status": "ok",
+				"server": server.Name,
+			},
+		},
+		{
+			path: "/api/login", method: "POST", status: 200,
+			matchConfig: models.MatchConfig{BodyPattern: `"username"`},
+			bodyJSON: map[string]interface{}{
+				"token":   "mock-token-abc123",
+				"expires": 3600,
+			},
+		},
+		// ── Template-based endpoints ──────────────────────────────────────────
+		// Echo back the path param
+		{
+			path: "/api/users/:id", method: "GET", status: 200,
+			bodyJSON: map[string]interface{}{
+				"id":     "{{.path.id}}",
+				"name":   "User {{.path.id}}",
+				"email":  "user-{{.path.id}}@example.com",
+				"server": server.Name,
+			},
+		},
+		// Echo back body fields on create
+		{
+			path: "/api/users", method: "POST", status: 201,
+			bodyJSON: map[string]interface{}{
+				"id":      "new-user-001",
+				"name":    "{{.body.name}}",
+				"email":   "{{.body.email}}",
+				"created": true,
+			},
+		},
+		// Echo path param + query param on update
+		{
+			path: "/api/users/:id", method: "PUT", status: 200,
+			bodyJSON: map[string]interface{}{
+				"id":      "{{.path.id}}",
+				"name":    "{{.body.name}}",
+				"updated": true,
+			},
+		},
+		// Query param usage
+		{
+			path: "/api/search", method: "GET", status: 200,
+			bodyJSON: map[string]interface{}{
+				"query":   "{{.query.q}}",
+				"page":    "{{.query.page}}",
+				"results": []interface{}{},
+			},
+		},
+		// Text body with template
+		{
+			path: "/api/greet/:name", method: "GET", status: 200,
+			bodyText: "Hello, {{.path.name}}! Welcome to {{.query.from}}.",
+		},
 	}
 
-	numEndpoints := rand.Intn(5) + 3 // 3-8 endpoints per server
-	for i := 0; i < numEndpoints && i < len(endpoints); i++ {
-		e := endpoints[i]
+	for i, e := range endpoints {
+		rc := models.ResponseConfig{
+			StatusCode: e.status,
+			Headers:    jsonHeader,
+		}
+		if e.bodyText != "" {
+			rc.Headers = map[string]string{"Content-Type": "text/plain"}
+			rc.BodyText = e.bodyText
+		} else {
+			rc.BodyJSON = e.bodyJSON
+		}
+
 		endpoint := models.MockEndpoint{
-			ID:           uuid.New(),
-			MockServerID: server.ID,
-			Path:         e.path,
-			Method:       e.method,
-			MatchConfig: models.MatchConfig{
-				PathPattern: e.path,
-				Headers: map[string]string{
-					"Content-Type": "application/json",
-				},
-			},
-			ResponseConfig: models.ResponseConfig{
-				StatusCode: e.status,
-				Headers: map[string]string{
-					"Content-Type": "application/json",
-				},
-				BodyJSON: map[string]interface{}{
-					"success": true,
-					"mock":    true,
-					"server":  server.Name,
-				},
-			},
-			Priority:  i,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ID:             uuid.New(),
+			MockServerID:   server.ID,
+			Path:           e.path,
+			Method:         e.method,
+			MatchConfig:    e.matchConfig,
+			ResponseConfig: rc,
+			Priority:       i,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
 		}
 		db.Create(&endpoint)
 	}

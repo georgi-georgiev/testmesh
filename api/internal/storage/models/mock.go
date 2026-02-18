@@ -132,18 +132,18 @@ func (sc StateConfig) Value() (driver.Value, error) {
 
 // MockRequest represents a logged request to a mock server
 type MockRequest struct {
-	ID           uuid.UUID              `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	MockServerID uuid.UUID              `gorm:"type:uuid;not null;index" json:"mock_server_id"`
-	MockServer   *MockServer            `gorm:"foreignKey:MockServerID" json:"mock_server,omitempty"`
-	EndpointID   *uuid.UUID             `gorm:"type:uuid;index" json:"endpoint_id,omitempty"`
-	Method       string                 `gorm:"not null" json:"method"`
-	Path         string                 `gorm:"not null" json:"path"`
-	Headers      map[string]interface{} `gorm:"type:jsonb" json:"headers"`
-	QueryParams  map[string]interface{} `gorm:"type:jsonb" json:"query_params"`
-	Body         string                 `json:"body"`
-	Matched      bool                   `gorm:"default:false" json:"matched"`
-	ResponseCode int                    `json:"response_code"`
-	ReceivedAt   time.Time              `gorm:"default:CURRENT_TIMESTAMP" json:"received_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	MockServerID uuid.UUID  `gorm:"type:uuid;not null;index" json:"mock_server_id"`
+	MockServer   *MockServer `gorm:"foreignKey:MockServerID" json:"mock_server,omitempty"`
+	EndpointID   *uuid.UUID `gorm:"type:uuid;index" json:"endpoint_id,omitempty"`
+	Method       string     `gorm:"not null" json:"method"`
+	Path         string     `gorm:"not null" json:"path"`
+	Headers      JSONMap    `gorm:"type:jsonb" json:"headers"`
+	QueryParams  JSONMap    `gorm:"type:jsonb" json:"query_params"`
+	Body         string     `json:"body"`
+	Matched      bool       `gorm:"default:false" json:"matched"`
+	ResponseCode int        `json:"response_code"`
+	ReceivedAt   time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"received_at"`
 }
 
 // TableName specifies the table name with schema
@@ -156,8 +156,8 @@ type MockState struct {
 	ID           uuid.UUID              `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	MockServerID uuid.UUID              `gorm:"type:uuid;not null;index" json:"mock_server_id"`
 	MockServer   *MockServer            `gorm:"foreignKey:MockServerID" json:"mock_server,omitempty"`
-	StateKey     string                 `gorm:"not null;index" json:"state_key"`
-	StateValue   map[string]interface{} `gorm:"type:jsonb;not null" json:"state_value"`
+	StateKey     string    `gorm:"not null;index" json:"state_key"`
+	StateValue   JSONMap   `gorm:"type:jsonb;not null" json:"state_value"`
 	UpdatedAt    time.Time              `json:"updated_at"`
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/reporting"
 	"github.com/georgi-georgiev/testmesh/internal/runner"
 	"github.com/georgi-georgiev/testmesh/internal/runner/debugger"
+	"github.com/georgi-georgiev/testmesh/internal/runner/mocks"
 	"github.com/georgi-georgiev/testmesh/internal/scheduler"
 	"github.com/georgi-georgiev/testmesh/internal/security"
 	"github.com/georgi-georgiev/testmesh/internal/storage/repository"
@@ -54,7 +56,7 @@ func (a *integrationRepoAdapter) GetAIIntegrations() ([]*ai.IntegrationData, err
 }
 
 // NewRouter creates and configures the API router
-func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engine {
+func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub, port int) *gin.Engine {
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -124,11 +126,16 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 	// Initialize services
 	oauth2Service := auth.NewOAuth2Service(logger)
 
+	// Initialize singleton mock manager (routes through main API server)
+	mockBaseURL := fmt.Sprintf("http://localhost:%d", port)
+	mockManager := mocks.NewManager(mockRepo, logger, mockBaseURL)
+	mockManager.RestoreRunningServers() // re-register DB-persisted running servers on startup
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
 	flowHandler := handlers.NewFlowHandler(flowRepo, logger)
-	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, envRepo, mockRepo, contractRepo, logger, wsHub)
-	mockHandler := handlers.NewMockHandler(mockRepo, logger)
+	executionHandler := handlers.NewExecutionHandler(executionRepo, flowRepo, envRepo, contractRepo, mockManager, logger, wsHub)
+	mockHandler := handlers.NewMockHandler(mockRepo, mockManager, logger)
 	contractHandler := handlers.NewContractHandler(contractRepo, logger)
 	reportingHandler := handlers.NewReportingHandler(reportingRepo, aggregator, generator, logger)
 	aiHandler := handlers.NewAIHandler(db, aiRepo, aiGenerator, aiAnalyzer, aiSelfHealing, aiProviders, logger)
@@ -201,6 +208,9 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 
 	// Health check
 	router.GET("/health", healthHandler.Check)
+
+	// Mock server wildcard route — serves all mock endpoints through the main API server
+	router.Any("/mocks/:server_id/*path", mockManager.GinHandler())
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -278,23 +288,26 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub) *gin.Engin
 		}
 
 		// Mock server routes
-		mocks := v1.Group("/mock-servers")
+		mocksGroup := v1.Group("/mock-servers")
 		{
-			mocks.GET("", mockHandler.ListServers)
-			mocks.GET("/:id", mockHandler.GetServer)
-			mocks.DELETE("/:id", mockHandler.DeleteServer)
-			mocks.GET("/:id/endpoints", mockHandler.GetEndpoints)
-			mocks.POST("/:id/endpoints", mockHandler.CreateEndpoint)
-			mocks.PUT("/:id/endpoints/:endpoint_id", mockHandler.UpdateEndpoint)
-			mocks.DELETE("/:id/endpoints/:endpoint_id", mockHandler.DeleteEndpoint)
-			mocks.GET("/:id/requests", mockHandler.GetRequests)
-			mocks.GET("/:id/requests/:request_id", mockHandler.GetRequest)
-			mocks.DELETE("/:id/requests", mockHandler.DeleteRequests)
-			mocks.GET("/:id/state", mockHandler.GetStates)
-			mocks.POST("/:id/state", mockHandler.CreateState)
-			mocks.GET("/:id/state/:key", mockHandler.GetState)
-			mocks.PUT("/:id/state/:key", mockHandler.UpdateState)
-			mocks.DELETE("/:id/state/:key", mockHandler.DeleteState)
+			mocksGroup.GET("", mockHandler.ListServers)
+			mocksGroup.POST("", mockHandler.CreateServer)
+			mocksGroup.GET("/:id", mockHandler.GetServer)
+			mocksGroup.DELETE("/:id", mockHandler.DeleteServer)
+			mocksGroup.POST("/:id/start", mockHandler.StartServer)
+			mocksGroup.POST("/:id/stop", mockHandler.StopServer)
+			mocksGroup.GET("/:id/endpoints", mockHandler.GetEndpoints)
+			mocksGroup.POST("/:id/endpoints", mockHandler.CreateEndpoint)
+			mocksGroup.PUT("/:id/endpoints/:endpoint_id", mockHandler.UpdateEndpoint)
+			mocksGroup.DELETE("/:id/endpoints/:endpoint_id", mockHandler.DeleteEndpoint)
+			mocksGroup.GET("/:id/requests", mockHandler.GetRequests)
+			mocksGroup.GET("/:id/requests/:request_id", mockHandler.GetRequest)
+			mocksGroup.DELETE("/:id/requests", mockHandler.DeleteRequests)
+			mocksGroup.GET("/:id/state", mockHandler.GetStates)
+			mocksGroup.POST("/:id/state", mockHandler.CreateState)
+			mocksGroup.GET("/:id/state/:key", mockHandler.GetState)
+			mocksGroup.PUT("/:id/state/:key", mockHandler.UpdateState)
+			mocksGroup.DELETE("/:id/state/:key", mockHandler.DeleteState)
 		}
 
 		// Contract testing routes
