@@ -22,15 +22,20 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Play, Trash2, Eye, Plus, X, Search } from 'lucide-react';
+import { Play, Trash2, Eye, Plus, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 5;
 
 export default function FlowsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [suiteFilter, setSuiteFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
+  const [page, setPage] = useState(0);
 
   const { data, isLoading, error } = useFlows({
     suite: suiteFilter || undefined,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
 
   const deleteFlow = useDeleteFlow();
@@ -49,7 +54,12 @@ export default function FlowsPage() {
     });
   };
 
+  const resetPage = () => setPage(0);
+
   const flows = data?.flows || [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   const filteredFlows = flows.filter((flow) => {
     const matchesSearch =
       flow.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -64,15 +74,12 @@ export default function FlowsPage() {
     return matchesSearch && matchesSuite && matchesTag;
   });
 
-  // Get unique suites and tags for filtering
-  const allSuites = [...new Set(flows.map(f => f.suite).filter(Boolean))];
-  const allTags = [...new Set(flows.flatMap(f => f.tags || []))];
-
   const hasActiveFilters = searchQuery || suiteFilter || tagFilter;
   const clearFilters = () => {
     setSearchQuery('');
     setSuiteFilter('');
     setTagFilter('');
+    resetPage();
   };
 
   if (error) {
@@ -116,20 +123,20 @@ export default function FlowsPage() {
                 <Input
                   placeholder="Search flows by name or description..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); resetPage(); }}
                   className="pl-10"
                 />
               </div>
               <Input
                 placeholder="Filter by suite..."
                 value={suiteFilter}
-                onChange={(e) => setSuiteFilter(e.target.value)}
+                onChange={(e) => { setSuiteFilter(e.target.value); resetPage(); }}
                 className="w-64"
               />
               <Input
                 placeholder="Filter by tag..."
                 value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
+                onChange={(e) => { setTagFilter(e.target.value); resetPage(); }}
                 className="w-64"
               />
               {hasActiveFilters && (
@@ -151,7 +158,7 @@ export default function FlowsPage() {
                   <Badge variant="secondary" className="gap-1">
                     Search: {searchQuery}
                     <button
-                      onClick={() => setSearchQuery('')}
+                      onClick={() => { setSearchQuery(''); resetPage(); }}
                       className="ml-1 hover:text-foreground"
                     >
                       <X className="w-3 h-3" />
@@ -162,7 +169,7 @@ export default function FlowsPage() {
                   <Badge variant="secondary" className="gap-1">
                     Suite: {suiteFilter}
                     <button
-                      onClick={() => setSuiteFilter('')}
+                      onClick={() => { setSuiteFilter(''); resetPage(); }}
                       className="ml-1 hover:text-foreground"
                     >
                       <X className="w-3 h-3" />
@@ -173,7 +180,7 @@ export default function FlowsPage() {
                   <Badge variant="secondary" className="gap-1">
                     Tag: {tagFilter}
                     <button
-                      onClick={() => setTagFilter('')}
+                      onClick={() => { setTagFilter(''); resetPage(); }}
                       className="ml-1 hover:text-foreground"
                     >
                       <X className="w-3 h-3" />
@@ -289,9 +296,36 @@ export default function FlowsPage() {
         </Card>
       )}
 
-      {data && data.total > 0 && (
-        <div className="mt-4 text-sm text-muted-foreground text-center">
-          Showing {filteredFlows.length} of {data.total} flows
+      {total > 0 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total} flows
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {page + 1} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

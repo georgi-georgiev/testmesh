@@ -12,7 +12,7 @@ export const flowKeys = {
 };
 
 // Hooks for flows
-export function useFlows(params?: { suite?: string; tags?: string[] }) {
+export function useFlows(params?: { suite?: string; tags?: string[]; limit?: number; offset?: number }) {
   return useQuery({
     queryKey: flowKeys.list(params || {}),
     queryFn: () => flowApi.list(params),

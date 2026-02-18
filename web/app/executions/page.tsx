@@ -28,18 +28,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Eye, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Eye, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ExecutionStatus } from '@/lib/api/types';
 
+const PAGE_SIZE = 5;
+
 export default function ExecutionsPage() {
   const [statusFilter, setStatusFilter] = useState<ExecutionStatus | 'all'>('all');
+  const [page, setPage] = useState(0);
 
   const { data, isLoading, error } = useExecutions({
     status: statusFilter === 'all' ? undefined : statusFilter,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
 
   const executions = data?.executions || [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const getStatusBadge = (status: ExecutionStatus) => {
     switch (status) {
@@ -100,9 +107,10 @@ export default function ExecutionsPage() {
           <div className="flex gap-4">
             <Select
               value={statusFilter}
-              onValueChange={(value) =>
-                setStatusFilter(value as ExecutionStatus | 'all')
-              }
+              onValueChange={(value) => {
+                setStatusFilter(value as ExecutionStatus | 'all');
+                setPage(0);
+              }}
             >
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Filter by status" />
@@ -214,9 +222,34 @@ export default function ExecutionsPage() {
         </Card>
       )}
 
-      {data && data.total > 0 && (
-        <div className="mt-4 text-sm text-muted-foreground text-center">
-          Showing {executions.length} of {data.total} executions
+      {total > 0 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total} executions
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Button>
+              <span>Page {page + 1} of {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

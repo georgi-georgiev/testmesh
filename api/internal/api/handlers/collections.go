@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
@@ -120,6 +121,12 @@ func (h *CollectionHandler) List(c *gin.Context) {
 
 	limit := 50
 	offset := 0
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v >= 0 {
+		offset = v
+	}
 
 	collections, total, err := h.repo.List(workspaceID, limit, offset)
 	if err != nil {

@@ -37,8 +37,10 @@ import {
 } from '@/components/ui/select';
 import type { FlowNode, FlowNodeData, ActionType, Comment } from './types';
 import { isFlowNodeData } from './types';
+import { useActiveEnvironment } from '@/lib/hooks/useEnvironments';
 import CommentPanel from './CommentPanel';
 import HTTPStepForm from './forms/HTTPStepForm';
+import KeyValueEditor from './forms/KeyValueEditor';
 import DatabaseQueryForm from './forms/DatabaseQueryForm';
 import KafkaPublishForm from './forms/KafkaPublishForm';
 import KafkaConsumeForm from './forms/KafkaConsumeForm';
@@ -89,6 +91,7 @@ interface PropertiesPanelProps {
   onNodeUpdate: (nodeId: string, data: Partial<FlowNodeData>) => void;
   onClose?: () => void;
   className?: string;
+  stepOutputs?: Record<string, Record<string, unknown>>;
 }
 
 export default function PropertiesPanel({
@@ -96,8 +99,18 @@ export default function PropertiesPanel({
   onNodeUpdate,
   onClose,
   className,
+  stepOutputs = {},
 }: PropertiesPanelProps) {
   const [localData, setLocalData] = useState<FlowNodeData | null>(null);
+  const { activeEnvironment } = useActiveEnvironment();
+
+  // Build variable map from active environment (enabled variables only)
+  const envVariables: Record<string, string> = {};
+  if (activeEnvironment) {
+    for (const v of activeEnvironment.variables) {
+      if (v.enabled && !v.is_secret) envVariables[v.key] = v.value;
+    }
+  }
 
   // Sync local state with node prop
   useEffect(() => {
@@ -241,6 +254,8 @@ export default function PropertiesPanel({
               action={localData.action}
               config={localData.config}
               onConfigChange={updateConfig}
+              variables={envVariables}
+              stepOutputs={stepOutputs}
             />
           </TabsContent>
 
@@ -298,14 +313,18 @@ function ActionConfig({
   action,
   config,
   onConfigChange,
+  variables,
+  stepOutputs,
 }: {
   action: ActionType;
   config: Record<string, any>;
   onConfigChange: (key: string, value: any) => void;
+  variables?: Record<string, string>;
+  stepOutputs?: Record<string, Record<string, unknown>>;
 }) {
   switch (action) {
     case 'http_request':
-      return <HTTPStepForm config={config} onChange={onConfigChange} />;
+      return <HTTPStepForm config={config} onChange={onConfigChange} variables={variables} stepOutputs={stepOutputs} />;
     case 'grpc_call':
       return <GrpcCallForm config={config} onChange={onConfigChange} />;
     case 'grpc_stream':
@@ -554,25 +573,75 @@ function AssertConfig({
   config: Record<string, any>;
   onChange: (key: string, value: any) => void;
 }) {
+  const parseAssertions = (raw: any): string[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } catch {}
+    }
+    return [];
+  };
+
+  const parseData = (raw: any): Record<string, any> => {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); if (p && typeof p === 'object') return p; } catch {}
+    }
+    return {};
+  };
+
+  const assertions: string[] = parseAssertions(config.assertions);
+  const dataBindings = parseData(config.data);
+
+  const updateAssertion = (index: number, value: string) => {
+    const next = [...assertions];
+    next[index] = value;
+    onChange('assertions', next);
+  };
+
+  const addAssertion = () => onChange('assertions', [...assertions, '']);
+
+  const removeAssertion = (index: number) => {
+    onChange('assertions', assertions.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label className="text-xs">Expression</Label>
-        <Input
-          value={config.expression || ''}
-          onChange={(e) => onChange('expression', e.target.value)}
-          placeholder="status == 200"
-          className="h-8 text-sm font-mono"
-        />
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">Assertions</Label>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={addAssertion}>
+            <Plus className="w-3 h-3 mr-1" />
+            Add
+          </Button>
+        </div>
+        {assertions.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">No assertions. Click Add to create one.</p>
+        ) : (
+          <div className="space-y-2">
+            {assertions.map((expr, i) => (
+              <div key={i} className="flex gap-1">
+                <Input
+                  value={expr}
+                  onChange={(e) => updateAssertion(i, e.target.value)}
+                  placeholder={`status == '200'`}
+                  className="h-8 text-sm font-mono flex-1"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeAssertion(i)}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">Message (on failure)</Label>
-        <Input
-          value={config.message || ''}
-          onChange={(e) => onChange('message', e.target.value)}
-          placeholder="Expected status 200"
-          className="h-8 text-sm"
+        <Label className="text-xs">Data bindings (key: expression)</Label>
+        <KeyValueEditor
+          value={dataBindings}
+          onChange={(val) => onChange('data', val)}
+          keyPlaceholder="variable_name"
+          valuePlaceholder="${step.field}"
         />
       </div>
     </div>

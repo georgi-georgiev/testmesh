@@ -1066,12 +1066,14 @@ func seedSampleData(db *gorm.DB) {
 	`)
 
 	// ==================== MOCK SERVERS ====================
+	// Fixed UUIDs match seed/main.go so environments can reference their base URLs
 	db.Exec(`
 		INSERT INTO mocks.mock_servers (id, name, port, base_url, status, started_at)
 		VALUES
-			('00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000001', 'running', NOW() - INTERVAL '1 day'),
-			('00000000-0000-0000-0007-000000000002'::uuid, 'User Service Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000002', 'running', NOW() - INTERVAL '2 days'),
-			('00000000-0000-0000-0007-000000000003'::uuid, 'Notification Service Mock', 0, 'http://localhost:5016/mocks/00000000-0000-0000-0007-000000000003', 'stopped', NOW() - INTERVAL '3 days')
+			('bb000000-0000-0000-0000-000000000001'::uuid, 'User Service Mock',         0, 'http://localhost:5016/mocks/bb000000-0000-0000-0000-000000000001', 'running', NOW() - INTERVAL '2 hours'),
+			('bb000000-0000-0000-0000-000000000002'::uuid, 'Order Service Mock',        0, 'http://localhost:5016/mocks/bb000000-0000-0000-0000-000000000002', 'running', NOW() - INTERVAL '2 hours'),
+			('bb000000-0000-0000-0000-000000000003'::uuid, 'Payment Service Mock',      0, 'http://localhost:5016/mocks/bb000000-0000-0000-0000-000000000003', 'running', NOW() - INTERVAL '2 hours'),
+			('bb000000-0000-0000-0000-000000000004'::uuid, 'Notification Service Mock', 0, 'http://localhost:5016/mocks/bb000000-0000-0000-0000-000000000004', 'running', NOW() - INTERVAL '2 hours')
 		ON CONFLICT (id) DO NOTHING;
 	`)
 
@@ -1079,12 +1081,24 @@ func seedSampleData(db *gorm.DB) {
 	db.Exec(`
 		INSERT INTO mocks.mock_endpoints (id, mock_server_id, path, method, response_config, priority)
 		VALUES
-			('00000000-0000-0000-0008-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments', 'POST', '{"status_code": 200, "body_json": {"id": "pay_123", "status": "succeeded", "amount": 1000}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/payments/:id', 'GET', '{"status_code": 200, "body_json": {"id": "pay_123", "status": "succeeded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000003'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '/api/refunds', 'POST', '{"status_code": 200, "body_json": {"id": "ref_456", "status": "pending"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000004'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users', 'GET', '{"status_code": 200, "body_json": {"users": [{"id": "user-1", "name": "John Doe"}, {"id": "user-2", "name": "Jane Smith"}]}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000005'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '/api/users/:id', 'GET', '{"status_code": 200, "body_json": {"id": "user-1", "name": "Test User"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
-			('00000000-0000-0000-0008-000000000006'::uuid, '00000000-0000-0000-0007-000000000003'::uuid, '/api/notifications/email', 'POST', '{"status_code": 202, "body_json": {"message_id": "msg_789", "status": "queued"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0)
+			('bb000000-0000-0000-0001-000000000001'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, '/api/health',      'GET',  '{"status_code": 200, "body_json": {"status": "ok", "service": "user-service"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('bb000000-0000-0000-0001-000000000002'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, '/api/users',       'GET',  '{"status_code": 200, "body_json": {"users": [{"id": "user-001", "name": "Alice Smith"}], "total": 1}, "headers": {"Content-Type": "application/json"}}'::jsonb, 1),
+			('bb000000-0000-0000-0001-000000000003'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, '/api/users/:id',   'GET',  '{"status_code": 200, "body_json": {"id": "{{.path.id}}", "name": "User {{.path.id}}", "email": "user-{{.path.id}}@example.com"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 2),
+			('bb000000-0000-0000-0001-000000000004'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, '/api/users',       'POST', '{"status_code": 201, "body_json": {"id": "user-new-001", "name": "{{.body.name}}", "email": "{{.body.email}}", "created": true}, "headers": {"Content-Type": "application/json"}}'::jsonb, 3),
+			('bb000000-0000-0000-0001-000000000005'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, '/api/login',       'POST', '{"status_code": 200, "body_json": {"token": "mock-jwt-token-abc123", "user_id": "user-001", "expires": 3600}, "headers": {"Content-Type": "application/json"}}'::jsonb, 4),
+			('bb000000-0000-0000-0002-000000000001'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, '/api/health',      'GET',  '{"status_code": 200, "body_json": {"status": "ok", "service": "order-service"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('bb000000-0000-0000-0002-000000000002'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, '/api/orders',      'GET',  '{"status_code": 200, "body_json": {"orders": [], "total": 0}, "headers": {"Content-Type": "application/json"}}'::jsonb, 1),
+			('bb000000-0000-0000-0002-000000000003'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, '/api/orders',      'POST', '{"status_code": 201, "body_json": {"id": "ord-new-001", "user_id": "{{.body.user_id}}", "status": "pending", "created": true}, "headers": {"Content-Type": "application/json"}}'::jsonb, 2),
+			('bb000000-0000-0000-0002-000000000004'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, '/api/orders/:id',  'GET',  '{"status_code": 200, "body_json": {"id": "{{.path.id}}", "status": "confirmed"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 3),
+			('bb000000-0000-0000-0002-000000000005'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, '/api/orders/:id',  'PUT',  '{"status_code": 200, "body_json": {"id": "{{.path.id}}", "status": "{{.body.status}}", "updated": true}, "headers": {"Content-Type": "application/json"}}'::jsonb, 4),
+			('bb000000-0000-0000-0003-000000000001'::uuid, 'bb000000-0000-0000-0000-000000000003'::uuid, '/api/health',      'GET',  '{"status_code": 200, "body_json": {"status": "ok", "service": "payment-service"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('bb000000-0000-0000-0003-000000000002'::uuid, 'bb000000-0000-0000-0000-000000000003'::uuid, '/api/payments',    'POST', '{"status_code": 200, "body_json": {"id": "pay-new-001", "order_id": "{{.body.order_id}}", "amount": "{{.body.amount}}", "status": "succeeded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 1),
+			('bb000000-0000-0000-0003-000000000003'::uuid, 'bb000000-0000-0000-0000-000000000003'::uuid, '/api/payments/:id','GET',  '{"status_code": 200, "body_json": {"id": "{{.path.id}}", "status": "succeeded", "currency": "USD"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 2),
+			('bb000000-0000-0000-0003-000000000004'::uuid, 'bb000000-0000-0000-0000-000000000003'::uuid, '/api/refunds',     'POST', '{"status_code": 200, "body_json": {"id": "ref-new-001", "payment_id": "{{.body.payment_id}}", "status": "refunded"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 3),
+			('bb000000-0000-0000-0004-000000000001'::uuid, 'bb000000-0000-0000-0000-000000000004'::uuid, '/api/health',                  'GET',  '{"status_code": 200, "body_json": {"status": "ok", "service": "notification-service"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 0),
+			('bb000000-0000-0000-0004-000000000002'::uuid, 'bb000000-0000-0000-0000-000000000004'::uuid, '/api/notifications/email',     'POST', '{"status_code": 202, "body_json": {"message_id": "msg-new-001", "to": "{{.body.to}}", "subject": "{{.body.subject}}", "status": "queued"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 1),
+			('bb000000-0000-0000-0004-000000000003'::uuid, 'bb000000-0000-0000-0000-000000000004'::uuid, '/api/notifications/sms',       'POST', '{"status_code": 202, "body_json": {"message_id": "sms-new-001", "to": "{{.body.to}}", "status": "sent"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 2),
+			('bb000000-0000-0000-0004-000000000004'::uuid, 'bb000000-0000-0000-0000-000000000004'::uuid, '/api/notifications/:id',       'GET',  '{"status_code": 200, "body_json": {"id": "{{.path.id}}", "type": "email", "status": "delivered"}, "headers": {"Content-Type": "application/json"}}'::jsonb, 3)
 		ON CONFLICT (id) DO NOTHING;
 	`)
 
@@ -1092,9 +1106,9 @@ func seedSampleData(db *gorm.DB) {
 	db.Exec(`
 		INSERT INTO mocks.mock_requests (id, mock_server_id, endpoint_id, method, path, headers, body, matched, response_code, received_at)
 		VALUES
-			('00000000-0000-0000-0009-000000000001'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '00000000-0000-0000-0008-000000000001'::uuid, 'POST', '/api/payments', '{"Content-Type": "application/json"}'::jsonb, '{"amount": 1000, "currency": "usd"}', true, 200, NOW() - INTERVAL '1 hour'),
-			('00000000-0000-0000-0009-000000000002'::uuid, '00000000-0000-0000-0007-000000000001'::uuid, '00000000-0000-0000-0008-000000000002'::uuid, 'GET', '/api/payments/pay_123', '{"Authorization": "Bearer token"}'::jsonb, NULL, true, 200, NOW() - INTERVAL '30 minutes'),
-			('00000000-0000-0000-0009-000000000003'::uuid, '00000000-0000-0000-0007-000000000002'::uuid, '00000000-0000-0000-0008-000000000004'::uuid, 'GET', '/api/users', '{}'::jsonb, NULL, true, 200, NOW() - INTERVAL '15 minutes')
+			('bb000000-0000-0000-0009-000000000001'::uuid, 'bb000000-0000-0000-0000-000000000003'::uuid, 'bb000000-0000-0000-0003-000000000002'::uuid, 'POST', '/api/payments', '{"Content-Type": "application/json"}'::jsonb, '{"amount": 99.98, "currency": "USD", "order_id": "ord-001"}', true, 200, NOW() - INTERVAL '1 hour'),
+			('bb000000-0000-0000-0009-000000000002'::uuid, 'bb000000-0000-0000-0000-000000000001'::uuid, 'bb000000-0000-0000-0001-000000000002'::uuid, 'GET',  '/api/users',    '{"Authorization": "Bearer mock-jwt-token-abc123"}'::jsonb, NULL, true, 200, NOW() - INTERVAL '30 minutes'),
+			('bb000000-0000-0000-0009-000000000003'::uuid, 'bb000000-0000-0000-0000-000000000002'::uuid, 'bb000000-0000-0000-0002-000000000003'::uuid, 'POST', '/api/orders',   '{"Content-Type": "application/json"}'::jsonb, '{"user_id": "user-001", "total": 99.98}', true, 201, NOW() - INTERVAL '15 minutes')
 		ON CONFLICT (id) DO NOTHING;
 	`)
 
@@ -1222,7 +1236,7 @@ func seedSampleData(db *gorm.DB) {
 			('00000000-0000-0000-0015-000000000001'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'flow.created', 'flow', '00000000-0000-0000-0002-000000000001'::uuid, 'User Registration', 'Created new flow', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '5 days'),
 			('00000000-0000-0000-0015-000000000002'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'flow.executed', 'flow', '00000000-0000-0000-0002-000000000001'::uuid, 'User Registration', 'Executed flow - Passed', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '2 hours'),
 			('00000000-0000-0000-0015-000000000003'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'schedule.created', 'schedule', '00000000-0000-0000-0005-000000000001'::uuid, 'Hourly Health Check', 'Created schedule', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '3 days'),
-			('00000000-0000-0000-0015-000000000004'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'mock.created', 'mock', '00000000-0000-0000-0007-000000000001'::uuid, 'Payment Gateway Mock', 'Created mock server', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '1 day'),
+			('00000000-0000-0000-0015-000000000004'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'mock.created', 'mock', 'bb000000-0000-0000-0000-000000000003'::uuid, 'Payment Service Mock', 'Created mock server', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '1 day'),
 			('00000000-0000-0000-0015-000000000005'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Default User', 'contract.verified', 'contract', '00000000-0000-0000-000a-000000000001'::uuid, 'web-frontend <> user-service', 'Contract verification passed', '00000000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '1 day')
 		ON CONFLICT (id) DO NOTHING;
 	`)

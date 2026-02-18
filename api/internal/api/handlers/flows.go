@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/georgi-georgiev/testmesh/internal/api/middleware"
@@ -81,6 +82,12 @@ func (h *FlowHandler) List(c *gin.Context) {
 	tags := c.QueryArray("tags")
 	limit := 20
 	offset := 0
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v >= 0 {
+		offset = v
+	}
 
 	flows, total, err := h.repo.List(workspaceID, suite, tags, limit, offset)
 	if err != nil {

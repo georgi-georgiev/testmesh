@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -15,15 +19,28 @@ import (
 	"github.com/georgi-georgiev/testmesh/internal/storage/models"
 )
 
+// Fixed UUIDs
+var (
+	seedWorkspaceID           = uuid.MustParse("aa000000-0000-0000-0000-000000000001")
+	userServiceMockID         = uuid.MustParse("bb000000-0000-0000-0000-000000000001")
+	orderServiceMockID        = uuid.MustParse("bb000000-0000-0000-0000-000000000002")
+	paymentServiceMockID      = uuid.MustParse("bb000000-0000-0000-0000-000000000003")
+	notificationServiceMockID = uuid.MustParse("bb000000-0000-0000-0000-000000000004")
+)
+
+func mockURL(id uuid.UUID) string {
+	return fmt.Sprintf("http://localhost:5016/mocks/%s", id)
+}
+
 // Seed data holders for relationships
 var (
-	environments   []models.Environment
-	collections    []models.Collection
-	flows          []models.Flow
-	executions     []models.Execution
-	mockServers    []models.MockServer
-	contracts      []models.Contract
-	schedules      []models.Schedule
+	environments []models.Environment
+	collections  []models.Collection
+	flows        []models.Flow
+	executions   []models.Execution
+	mockServers  []models.MockServer
+	contracts    []models.Contract
+	schedules    []models.Schedule
 )
 
 func main() {
@@ -56,7 +73,11 @@ func main() {
 	// Clear existing data (in reverse dependency order)
 	clearData(db)
 
-	// Phase 1: Foundation
+	// Phase 0: Workspace — must exist before anything that has workspace_id FK
+	seedWorkspace(db)
+
+	// Phase 1: Foundation — mock servers first so their URLs go into environments
+	seedMockServers(db)
 	seedEnvironments(db)
 	seedCollections(db)
 
@@ -65,9 +86,6 @@ func main() {
 
 	// Phase 3: Execution Data
 	seedExecutions(db)
-
-	// Phase 4: Mock System
-	seedMockServers(db)
 
 	// Phase 5: Contract Testing
 	seedContracts(db)
@@ -137,8 +155,32 @@ func clearData(db *gorm.DB) {
 // PHASE 1: Foundation
 // ============================================================================
 
+func seedWorkspace(db *gorm.DB) {
+	log.Println("🏢 Seeding workspace...")
+	ws := models.Workspace{
+		ID:          seedWorkspaceID,
+		Name:        "TestMesh Demo",
+		Slug:        "testmesh-demo",
+		Description: "Demo workspace with realistic flow data",
+		Type:        models.WorkspaceTypeTeam,
+		OwnerID:     uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+	}
+	result := db.Where("id = ?", seedWorkspaceID).FirstOrCreate(&ws)
+	if result.Error != nil {
+		log.Printf("  Failed to upsert workspace: %v", result.Error)
+	} else {
+		log.Printf("  Workspace ready: %s (%s)", ws.Name, ws.ID)
+	}
+}
+
 func seedEnvironments(db *gorm.DB) {
 	log.Println("📦 Seeding environments...")
+
+	// Service mock URLs — aligned with fixed mock server IDs seeded above
+	devUserURL    := mockURL(userServiceMockID)
+	devOrderURL   := mockURL(orderServiceMockID)
+	devPayURL     := mockURL(paymentServiceMockID)
+	devNotifyURL  := mockURL(notificationServiceMockID)
 
 	envData := []struct {
 		name      string
@@ -151,61 +193,99 @@ func seedEnvironments(db *gorm.DB) {
 			color:     "#10B981",
 			isDefault: true,
 			variables: []models.EnvironmentVariable{
-				{Key: "BASE_URL", Value: "http://localhost:3000", Description: "API base URL", IsSecret: false, Enabled: true},
-				{Key: "API_KEY", Value: "dev-api-key-12345", Description: "Development API key", IsSecret: true, Enabled: true},
-				{Key: "DB_HOST", Value: "localhost", Description: "Database host", IsSecret: false, Enabled: true},
-				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
-				{Key: "TIMEOUT", Value: "30000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
-				{Key: "DEBUG", Value: "true", Description: "Debug mode", IsSecret: false, Enabled: true},
-				{Key: "LOG_LEVEL", Value: "debug", Description: "Logging level", IsSecret: false, Enabled: true},
-				{Key: "CACHE_TTL", Value: "60", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
+				// Service URLs pointing at local mock servers
+				{Key: "USER_SERVICE_URL", Value: devUserURL, Description: "User service (mock)", Enabled: true},
+				{Key: "ORDER_SERVICE_URL", Value: devOrderURL, Description: "Order service (mock)", Enabled: true},
+				{Key: "PAYMENT_SERVICE_URL", Value: devPayURL, Description: "Payment service (mock)", Enabled: true},
+				{Key: "NOTIFICATION_SERVICE_URL", Value: devNotifyURL, Description: "Notification service (mock)", Enabled: true},
+				{Key: "TESTMESH_API_URL", Value: "http://localhost:5016", Description: "TestMesh API", Enabled: true},
+				// Database
+				{Key: "DB_HOST", Value: "localhost", Description: "Postgres host", Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Description: "Postgres port", Enabled: true},
+				{Key: "DB_NAME", Value: "testmesh", Description: "Postgres database", Enabled: true},
+				{Key: "DB_USER", Value: "root", Description: "Postgres user", Enabled: true},
+				{Key: "DB_PASSWORD", Value: "root", Description: "Postgres password", IsSecret: true, Enabled: true},
+				{Key: "DB_DSN", Value: "postgresql://root:root@localhost:5432/testmesh?sslmode=disable", Description: "Full Postgres DSN", IsSecret: true, Enabled: true},
+				// Kafka
+				{Key: "KAFKA_BROKERS", Value: "localhost:9092", Description: "Kafka broker list", Enabled: true},
+				{Key: "KAFKA_GROUP_ID", Value: "testmesh-dev", Description: "Default consumer group", Enabled: true},
+				// Redis
+				{Key: "REDIS_URL", Value: "redis://localhost:6379", Description: "Redis connection URL", Enabled: true},
+				// Auth
+				{Key: "API_KEY", Value: "dev-api-key-abc123", Description: "Service API key", IsSecret: true, Enabled: true},
+				{Key: "JWT_SECRET", Value: "dev-jwt-secret-xyz", Description: "JWT signing secret", IsSecret: true, Enabled: true},
+				// Misc
+				{Key: "TIMEOUT", Value: "30s", Description: "Default request timeout", Enabled: true},
+				{Key: "DEBUG", Value: "true", Description: "Debug mode", Enabled: true},
 			},
 		},
 		{
-			name:      "Staging",
-			color:     "#F59E0B",
-			isDefault: false,
+			name:  "Staging",
+			color: "#F59E0B",
 			variables: []models.EnvironmentVariable{
-				{Key: "BASE_URL", Value: "https://staging-api.testmesh.io", Description: "Staging API URL", IsSecret: false, Enabled: true},
-				{Key: "API_KEY", Value: "stg-api-key-67890", Description: "Staging API key", IsSecret: true, Enabled: true},
-				{Key: "DB_HOST", Value: "staging-db.testmesh.io", Description: "Database host", IsSecret: false, Enabled: true},
-				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
-				{Key: "TIMEOUT", Value: "15000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
-				{Key: "DEBUG", Value: "false", Description: "Debug mode", IsSecret: false, Enabled: true},
-				{Key: "LOG_LEVEL", Value: "info", Description: "Logging level", IsSecret: false, Enabled: true},
-				{Key: "CACHE_TTL", Value: "300", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
-				{Key: "FEATURE_FLAGS", Value: "beta,experimental", Description: "Enabled feature flags", IsSecret: false, Enabled: true},
-				{Key: "SENTRY_DSN", Value: "https://staging@sentry.io/123", Description: "Sentry DSN", IsSecret: true, Enabled: true},
+				{Key: "USER_SERVICE_URL", Value: "https://users.staging.example.com", Description: "User service", Enabled: true},
+				{Key: "ORDER_SERVICE_URL", Value: "https://orders.staging.example.com", Description: "Order service", Enabled: true},
+				{Key: "PAYMENT_SERVICE_URL", Value: "https://payments.staging.example.com", Description: "Payment service", Enabled: true},
+				{Key: "NOTIFICATION_SERVICE_URL", Value: "https://notify.staging.example.com", Description: "Notification service", Enabled: true},
+				{Key: "TESTMESH_API_URL", Value: "https://api.staging.testmesh.io", Enabled: true},
+				{Key: "DB_HOST", Value: "staging-db.example.com", Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Enabled: true},
+				{Key: "DB_NAME", Value: "testmesh_staging", Enabled: true},
+				{Key: "DB_USER", Value: "testmesh", Enabled: true},
+				{Key: "DB_PASSWORD", Value: "stg-password", IsSecret: true, Enabled: true},
+				{Key: "DB_DSN", Value: "postgresql://testmesh:stg-password@staging-db.example.com:5432/testmesh_staging", IsSecret: true, Enabled: true},
+				{Key: "KAFKA_BROKERS", Value: "kafka.staging.example.com:9092", Enabled: true},
+				{Key: "KAFKA_GROUP_ID", Value: "testmesh-staging", Enabled: true},
+				{Key: "REDIS_URL", Value: "redis://redis.staging.example.com:6379", Enabled: true},
+				{Key: "API_KEY", Value: "stg-api-key-xyz", IsSecret: true, Enabled: true},
+				{Key: "JWT_SECRET", Value: "stg-jwt-secret", IsSecret: true, Enabled: true},
+				{Key: "TIMEOUT", Value: "15s", Enabled: true},
+				{Key: "DEBUG", Value: "false", Enabled: true},
 			},
 		},
 		{
-			name:      "Production",
-			color:     "#EF4444",
-			isDefault: false,
+			name:  "Production",
+			color: "#EF4444",
 			variables: []models.EnvironmentVariable{
-				{Key: "BASE_URL", Value: "https://api.testmesh.io", Description: "Production API URL", IsSecret: false, Enabled: true},
-				{Key: "API_KEY", Value: "prod-api-key-secret", Description: "Production API key", IsSecret: true, Enabled: true},
-				{Key: "DB_HOST", Value: "prod-db.testmesh.io", Description: "Database host", IsSecret: false, Enabled: true},
-				{Key: "DB_PORT", Value: "5432", Description: "Database port", IsSecret: false, Enabled: true},
-				{Key: "TIMEOUT", Value: "10000", Description: "Request timeout (ms)", IsSecret: false, Enabled: true},
-				{Key: "DEBUG", Value: "false", Description: "Debug mode", IsSecret: false, Enabled: true},
-				{Key: "LOG_LEVEL", Value: "warn", Description: "Logging level", IsSecret: false, Enabled: true},
-				{Key: "CACHE_TTL", Value: "600", Description: "Cache TTL in seconds", IsSecret: false, Enabled: true},
-				{Key: "RATE_LIMIT", Value: "1000", Description: "Rate limit per minute", IsSecret: false, Enabled: true},
-				{Key: "SENTRY_DSN", Value: "https://prod@sentry.io/456", Description: "Sentry DSN", IsSecret: true, Enabled: true},
+				{Key: "USER_SERVICE_URL", Value: "https://users.example.com", Enabled: true},
+				{Key: "ORDER_SERVICE_URL", Value: "https://orders.example.com", Enabled: true},
+				{Key: "PAYMENT_SERVICE_URL", Value: "https://payments.example.com", Enabled: true},
+				{Key: "NOTIFICATION_SERVICE_URL", Value: "https://notify.example.com", Enabled: true},
+				{Key: "TESTMESH_API_URL", Value: "https://api.testmesh.io", Enabled: true},
+				{Key: "DB_HOST", Value: "prod-db.example.com", Enabled: true},
+				{Key: "DB_PORT", Value: "5432", Enabled: true},
+				{Key: "DB_NAME", Value: "testmesh_prod", Enabled: true},
+				{Key: "DB_USER", Value: "testmesh", Enabled: true},
+				{Key: "DB_PASSWORD", Value: "prod-password", IsSecret: true, Enabled: true},
+				{Key: "DB_DSN", Value: "postgresql://testmesh:prod-password@prod-db.example.com:5432/testmesh_prod?sslmode=require", IsSecret: true, Enabled: true},
+				{Key: "KAFKA_BROKERS", Value: "kafka1.example.com:9092,kafka2.example.com:9092", Enabled: true},
+				{Key: "KAFKA_GROUP_ID", Value: "testmesh-prod", Enabled: true},
+				{Key: "REDIS_URL", Value: "redis://redis.example.com:6379", Enabled: true},
+				{Key: "API_KEY", Value: "prod-api-key-secret", IsSecret: true, Enabled: true},
+				{Key: "JWT_SECRET", Value: "prod-jwt-secret", IsSecret: true, Enabled: true},
+				{Key: "TIMEOUT", Value: "10s", Enabled: true},
+				{Key: "DEBUG", Value: "false", Enabled: true},
+				{Key: "RATE_LIMIT", Value: "1000", Description: "Requests per minute", Enabled: true},
 			},
 		},
 		{
-			name:      "CI/CD",
-			color:     "#8B5CF6",
-			isDefault: false,
+			name:  "CI/CD",
+			color: "#8B5CF6",
 			variables: []models.EnvironmentVariable{
-				{Key: "BASE_URL", Value: "http://localhost:5016", Description: "CI API URL", IsSecret: false, Enabled: true},
-				{Key: "API_KEY", Value: "ci-api-key-test", Description: "CI API key", IsSecret: true, Enabled: true},
-				{Key: "TIMEOUT", Value: "60000", Description: "CI timeout (ms)", IsSecret: false, Enabled: true},
-				{Key: "PARALLEL_WORKERS", Value: "4", Description: "Parallel test workers", IsSecret: false, Enabled: true},
-				{Key: "RETRY_COUNT", Value: "2", Description: "Retry failed tests", IsSecret: false, Enabled: true},
-				{Key: "HEADLESS", Value: "true", Description: "Run in headless mode", IsSecret: false, Enabled: true},
+				// CI points at the same local mocks as Dev
+				{Key: "USER_SERVICE_URL", Value: devUserURL, Enabled: true},
+				{Key: "ORDER_SERVICE_URL", Value: devOrderURL, Enabled: true},
+				{Key: "PAYMENT_SERVICE_URL", Value: devPayURL, Enabled: true},
+				{Key: "NOTIFICATION_SERVICE_URL", Value: devNotifyURL, Enabled: true},
+				{Key: "TESTMESH_API_URL", Value: "http://localhost:5016", Enabled: true},
+				{Key: "DB_DSN", Value: "postgresql://root:root@localhost:5432/testmesh?sslmode=disable", IsSecret: true, Enabled: true},
+				{Key: "KAFKA_BROKERS", Value: "localhost:9092", Enabled: true},
+				{Key: "KAFKA_GROUP_ID", Value: "testmesh-ci", Enabled: true},
+				{Key: "REDIS_URL", Value: "redis://localhost:6379", Enabled: true},
+				{Key: "API_KEY", Value: "ci-api-key-test", IsSecret: true, Enabled: true},
+				{Key: "TIMEOUT", Value: "60s", Enabled: true},
+				{Key: "PARALLEL_WORKERS", Value: "4", Enabled: true},
+				{Key: "RETRY_COUNT", Value: "2", Enabled: true},
 			},
 		},
 	}
@@ -213,6 +293,7 @@ func seedEnvironments(db *gorm.DB) {
 	for _, e := range envData {
 		env := models.Environment{
 			ID:          uuid.New(),
+			WorkspaceID: seedWorkspaceID,
 			Name:        e.name,
 			Description: fmt.Sprintf("%s environment configuration", e.name),
 			Color:       e.color,
@@ -250,6 +331,7 @@ func seedCollections(db *gorm.DB) {
 	for i, c := range rootCollections {
 		collection := models.Collection{
 			ID:          uuid.New(),
+			WorkspaceID: seedWorkspaceID,
 			Name:        c.name,
 			Description: c.desc,
 			Icon:        c.icon,
@@ -286,6 +368,7 @@ func seedCollections(db *gorm.DB) {
 		for i, c := range nestedCollections {
 			collection := models.Collection{
 				ID:          uuid.New(),
+				WorkspaceID: seedWorkspaceID,
 				Name:        c.name,
 				Description: fmt.Sprintf("Nested collection for %s", c.name),
 				Icon:        c.icon,
@@ -310,131 +393,87 @@ func seedCollections(db *gorm.DB) {
 // PHASE 2: Core Entities
 // ============================================================================
 
+// flowFile is the YAML schema for a flow definition file.
+type flowFile struct {
+	Name        string         `yaml:"name"`
+	Description string         `yaml:"description"`
+	Suite       string         `yaml:"suite"`
+	Tags        []string       `yaml:"tags"`
+	Collection  string         `yaml:"collection"` // collection name, "" = no collection
+	Steps       []models.Step  `yaml:"steps"`
+}
+
+// collectionIndex maps a collection name to its index in the collections slice.
+func collectionIndex(name string) int {
+	names := []string{
+		"User API Tests", "Payment Gateway", "Authentication",
+		"E-commerce Flows", "Regression Suite",
+	}
+	for i, n := range names {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
 func seedFlows(db *gorm.DB) {
 	log.Println("🔄 Seeding flows...")
 
-	flowData := []struct {
-		name       string
-		suite      string
-		tags       []string
-		steps      int
-		collection int // index into collections array, -1 for none
-	}{
-		{"User Registration Flow", "auth", []string{"smoke", "critical"}, 5, 0},
-		{"Login with OAuth2", "auth", []string{"integration"}, 8, 2},
-		{"Password Reset Journey", "auth", []string{"e2e"}, 6, 2},
-		{"Create Payment Transaction", "payments", []string{"critical", "api"}, 7, 1},
-		{"Refund Processing", "payments", []string{"api"}, 5, 1},
-		{"Product Search API", "e-commerce", []string{"smoke", "api"}, 4, 3},
-		{"Add to Cart E2E", "e-commerce", []string{"e2e", "ui"}, 10, 3},
-		{"Checkout Complete Flow", "e-commerce", []string{"critical", "e2e"}, 12, 3},
-		{"User Profile Update", "users", []string{"api"}, 5, 0},
-		{"API Rate Limiting Test", "regression", []string{"slow"}, 6, 4},
-		{"Database Connection Pool", "regression", []string{"infrastructure"}, 4, 4},
-		{"Kafka Message Producer", "integration", []string{"slow", "infrastructure"}, 8, -1},
-		{"WebSocket Real-time Updates", "integration", []string{"e2e"}, 6, -1},
-		{"GraphQL Query Test", "api", []string{"smoke"}, 5, -1},
-		{"Contract Verification Suite", "contracts", []string{"critical"}, 7, -1},
+	// Discover flow YAML files relative to this binary's working directory.
+	// The seed is run from api/ so flows/ lives at cmd/seed/flows/*.yaml.
+	pattern := "cmd/seed/flows/*.yaml"
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		log.Printf("  No flow YAML files found at %s, skipping", pattern)
+		return
 	}
+	sort.Strings(matches) // deterministic order
 
-	actions := []string{"http", "assert", "extract", "wait", "grpc", "websocket", "graphql"}
-
-	for i, f := range flowData {
-		// Build steps
-		steps := make([]models.Step, f.steps)
-		for j := 0; j < f.steps; j++ {
-			action := actions[j%len(actions)]
-			steps[j] = models.Step{
-				ID:          fmt.Sprintf("step_%d", j+1),
-				Action:      action,
-				Name:        fmt.Sprintf("%s Step %d", f.name, j+1),
-				Description: fmt.Sprintf("Execute %s action for %s", action, f.name),
-				Config:      buildStepConfig(action, j),
-			}
+	for i, path := range matches {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("  Failed to read flow file %s: %v", path, err)
+			continue
+		}
+		var ff flowFile
+		if err := yaml.Unmarshal(data, &ff); err != nil {
+			log.Printf("  Failed to parse flow file %s: %v", path, err)
+			continue
 		}
 
-		definition := models.FlowDefinition{
-			Name:        f.name,
-			Description: fmt.Sprintf("Test flow for %s operations", f.suite),
-			Suite:       f.suite,
-			Tags:        f.tags,
-			Steps:       steps,
+		def := models.FlowDefinition{
+			Name:        ff.Name,
+			Description: ff.Description,
+			Suite:       ff.Suite,
+			Tags:        ff.Tags,
+			Steps:       ff.Steps,
 		}
-
 		flow := models.Flow{
 			ID:          uuid.New(),
-			Name:        f.name,
-			Description: fmt.Sprintf("Automated test flow: %s", f.name),
-			Suite:       f.suite,
-			Tags:        f.tags,
-			Definition:  definition,
-			Environment: "default",
+			WorkspaceID: seedWorkspaceID,
+			Name:        ff.Name,
+			Description: ff.Description,
+			Suite:       ff.Suite,
+			Tags:        ff.Tags,
+			Definition:  def,
+			Environment: "Development",
 			SortOrder:   i,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
-
-		// Assign to collection if specified
-		if f.collection >= 0 && f.collection < len(collections) {
-			flow.CollectionID = &collections[f.collection].ID
+		if idx := collectionIndex(ff.Collection); idx >= 0 && idx < len(collections) {
+			flow.CollectionID = &collections[idx].ID
 		}
-
 		if err := db.Create(&flow).Error; err != nil {
-			log.Printf("Failed to create flow %s: %v", f.name, err)
+			log.Printf("  Failed to create flow %s: %v", ff.Name, err)
 		} else {
 			flows = append(flows, flow)
 		}
 	}
-
 	log.Printf("  Created %d flows", len(flows))
 }
 
-func buildStepConfig(action string, stepNum int) map[string]interface{} {
-	switch action {
-	case "http":
-		return map[string]interface{}{
-			"method": []string{"GET", "POST", "PUT", "DELETE"}[stepNum%4],
-			"url":    "{{BASE_URL}}/api/v1/resource",
-			"headers": map[string]string{
-				"Authorization": "Bearer {{API_KEY}}",
-				"Content-Type":  "application/json",
-			},
-		}
-	case "assert":
-		return map[string]interface{}{
-			"expression": "response.status == 200",
-			"message":    "Expected successful response",
-		}
-	case "extract":
-		return map[string]interface{}{
-			"source": "response.body",
-			"path":   "$.data.id",
-			"target": "extracted_id",
-		}
-	case "wait":
-		return map[string]interface{}{
-			"duration": "1s",
-		}
-	case "grpc":
-		return map[string]interface{}{
-			"service": "UserService",
-			"method":  "GetUser",
-			"message": map[string]interface{}{"id": "{{user_id}}"},
-		}
-	case "websocket":
-		return map[string]interface{}{
-			"url":     "ws://{{BASE_URL}}/ws",
-			"message": `{"type": "subscribe", "channel": "updates"}`,
-		}
-	case "graphql":
-		return map[string]interface{}{
-			"url":   "{{BASE_URL}}/graphql",
-			"query": "query { users { id name email } }",
-		}
-	default:
-		return map[string]interface{}{}
-	}
-}
 
 // ============================================================================
 // PHASE 3: Execution Data
@@ -611,36 +650,159 @@ func getRandomError() string {
 func seedMockServers(db *gorm.DB) {
 	log.Println("🎭 Seeding mock servers...")
 
-	serverData := []struct {
-		name   string
-		status models.MockServerStatus
-	}{
-		{"User API Mock", models.MockServerStatusRunning},
-		{"Payment Gateway Mock", models.MockServerStatusRunning},
-		{"Email Service Mock", models.MockServerStatusStopped},
-		{"Notification Mock", models.MockServerStatusRunning},
-		{"Legacy API Mock", models.MockServerStatusFailed},
+	now := time.Now()
+	startedAt := now.Add(-2 * time.Hour)
+
+	type serverSpec struct {
+		id        uuid.UUID
+		name      string
+		endpoints []endpointDef
 	}
 
-	for _, s := range serverData {
-		startedAt := time.Now().Add(-time.Duration(rand.Intn(168)) * time.Hour)
-		var stoppedAt *time.Time
-		if s.status == models.MockServerStatusStopped || s.status == models.MockServerStatusFailed {
-			stopped := startedAt.Add(time.Duration(rand.Intn(24)) * time.Hour)
-			stoppedAt = &stopped
-		}
+	servers := []serverSpec{
+		{
+			id:   userServiceMockID,
+			name: "User Service Mock",
+			endpoints: []endpointDef{
+				{path: "/api/health", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{"status": "ok", "service": "user-service"}},
+				{path: "/api/users", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"users": []interface{}{
+							map[string]interface{}{"id": "user-001", "name": "Alice Smith", "email": "alice@example.com"},
+							map[string]interface{}{"id": "user-002", "name": "Bob Jones", "email": "bob@example.com"},
+						},
+						"total": 2,
+					}},
+				{path: "/api/users/:id", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "name": "User {{.path.id}}",
+						"email": "user-{{.path.id}}@example.com", "role": "member",
+					}},
+				{path: "/api/users", method: "POST", status: 201,
+					bodyJSON: map[string]interface{}{
+						"id": "user-new-001", "name": "{{.body.name}}",
+						"email": "{{.body.email}}", "created": true,
+					}},
+				{path: "/api/users/:id", method: "PUT", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "name": "{{.body.name}}", "updated": true,
+					}},
+				{path: "/api/users/:id", method: "DELETE", status: 204,
+					bodyJSON: map[string]interface{}{}},
+				{path: "/api/login", method: "POST", status: 200,
+					bodyJSON: map[string]interface{}{
+						"token": "mock-jwt-token-abc123", "user_id": "user-001", "expires": 3600,
+					}},
+				{path: "/api/search", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"query": "{{.query.q}}", "results": []interface{}{}, "total": 0,
+					}},
+			},
+		},
+		{
+			id:   orderServiceMockID,
+			name: "Order Service Mock",
+			endpoints: []endpointDef{
+				{path: "/api/health", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{"status": "ok", "service": "order-service"}},
+				{path: "/api/orders", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"orders": []interface{}{
+							map[string]interface{}{"id": "ord-001", "user_id": "user-001", "status": "confirmed", "total": 99.98},
+							map[string]interface{}{"id": "ord-002", "user_id": "user-002", "status": "shipped", "total": 149.00},
+						},
+						"total": 2,
+					}},
+				{path: "/api/orders/:id", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "status": "confirmed", "total": 99.98, "user_id": "user-001",
+					}},
+				{path: "/api/orders", method: "POST", status: 201,
+					bodyJSON: map[string]interface{}{
+						"id": "ord-new-001", "user_id": "{{.body.user_id}}",
+						"total": "{{.body.total}}", "status": "pending", "created": true,
+					}},
+				{path: "/api/orders/:id", method: "PUT", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "status": "{{.body.status}}", "updated": true,
+					}},
+				{path: "/api/orders/:id", method: "DELETE", status: 200,
+					bodyJSON: map[string]interface{}{"deleted": true, "id": "{{.path.id}}"}},
+			},
+		},
+		{
+			id:   paymentServiceMockID,
+			name: "Payment Service Mock",
+			endpoints: []endpointDef{
+				{path: "/api/health", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{"status": "ok", "service": "payment-service"}},
+				{path: "/api/payments", method: "POST", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "pay-new-001", "order_id": "{{.body.order_id}}",
+						"amount": "{{.body.amount}}", "currency": "{{.body.currency}}",
+						"status": "succeeded", "method": "{{.body.method}}",
+					}},
+				{path: "/api/payments/:id", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "amount": 149.99, "currency": "USD", "status": "succeeded",
+					}},
+				{path: "/api/payments", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"payments": []interface{}{
+							map[string]interface{}{"id": "pay-001", "amount": 99.98, "status": "succeeded"},
+							map[string]interface{}{"id": "pay-002", "amount": 149.99, "status": "succeeded"},
+						},
+						"total": 2,
+					}},
+				{path: "/api/refunds", method: "POST", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "ref-new-001", "payment_id": "{{.body.payment_id}}",
+						"amount": "{{.body.amount}}", "status": "refunded",
+					}},
+			},
+		},
+		{
+			id:   notificationServiceMockID,
+			name: "Notification Service Mock",
+			endpoints: []endpointDef{
+				{path: "/api/health", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{"status": "ok", "service": "notification-service"}},
+				{path: "/api/notifications/email", method: "POST", status: 202,
+					bodyJSON: map[string]interface{}{
+						"message_id": "msg-new-001", "to": "{{.body.to}}",
+						"subject": "{{.body.subject}}", "status": "queued",
+					}},
+				{path: "/api/notifications/sms", method: "POST", status: 202,
+					bodyJSON: map[string]interface{}{
+						"message_id": "sms-new-001", "to": "{{.body.to}}", "status": "sent",
+					}},
+				{path: "/api/notifications", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"notifications": []interface{}{
+							map[string]interface{}{"id": "notif-001", "type": "email", "status": "delivered"},
+							map[string]interface{}{"id": "notif-002", "type": "sms", "status": "sent"},
+						},
+						"total": 2,
+					}},
+				{path: "/api/notifications/:id", method: "GET", status: 200,
+					bodyJSON: map[string]interface{}{
+						"id": "{{.path.id}}", "type": "email", "status": "delivered", "to": "user@example.com",
+					}},
+			},
+		},
+	}
 
-		serverID := uuid.New()
+	for _, s := range servers {
 		server := models.MockServer{
-			ID:        serverID,
+			ID:        s.id,
 			Name:      s.name,
 			Port:      0,
-			BaseURL:   fmt.Sprintf("http://localhost:5016/mocks/%s", serverID),
-			Status:    s.status,
+			BaseURL:   mockURL(s.id),
+			Status:    models.MockServerStatusRunning,
 			StartedAt: &startedAt,
-			StoppedAt: stoppedAt,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 
 		if err := db.Create(&server).Error; err != nil {
@@ -649,13 +811,30 @@ func seedMockServers(db *gorm.DB) {
 		}
 		mockServers = append(mockServers, server)
 
-		// Create endpoints for each server
-		seedMockEndpoints(db, server)
+		for i, e := range s.endpoints {
+			rc := models.ResponseConfig{StatusCode: e.status}
+			if e.bodyText != "" {
+				rc.Headers = map[string]string{"Content-Type": "text/plain"}
+				rc.BodyText = e.bodyText
+			} else {
+				rc.Headers = map[string]string{"Content-Type": "application/json"}
+				rc.BodyJSON = e.bodyJSON
+			}
+			endpoint := models.MockEndpoint{
+				ID:             uuid.New(),
+				MockServerID:   server.ID,
+				Path:           e.path,
+				Method:         e.method,
+				MatchConfig:    e.matchConfig,
+				ResponseConfig: rc,
+				Priority:       i,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			db.Create(&endpoint)
+		}
 
-		// Create captured requests
 		seedMockRequests(db, server)
-
-		// Create state entries
 		seedMockState(db, server)
 	}
 
@@ -671,108 +850,6 @@ type endpointDef struct {
 	bodyText    string
 }
 
-func seedMockEndpoints(db *gorm.DB, server models.MockServer) {
-	jsonHeader := map[string]string{"Content-Type": "application/json"}
-
-	endpoints := []endpointDef{
-		// ── Static endpoints ──────────────────────────────────────────────────
-		{
-			path: "/api/users", method: "GET", status: 200,
-			bodyJSON: map[string]interface{}{
-				"users": []interface{}{
-					map[string]interface{}{"id": "1", "name": "Alice"},
-					map[string]interface{}{"id": "2", "name": "Bob"},
-				},
-				"total": 2,
-			},
-		},
-		{
-			path: "/api/health", method: "GET", status: 200,
-			bodyJSON: map[string]interface{}{
-				"status": "ok",
-				"server": server.Name,
-			},
-		},
-		{
-			path: "/api/login", method: "POST", status: 200,
-			matchConfig: models.MatchConfig{BodyPattern: `"username"`},
-			bodyJSON: map[string]interface{}{
-				"token":   "mock-token-abc123",
-				"expires": 3600,
-			},
-		},
-		// ── Template-based endpoints ──────────────────────────────────────────
-		// Echo back the path param
-		{
-			path: "/api/users/:id", method: "GET", status: 200,
-			bodyJSON: map[string]interface{}{
-				"id":     "{{.path.id}}",
-				"name":   "User {{.path.id}}",
-				"email":  "user-{{.path.id}}@example.com",
-				"server": server.Name,
-			},
-		},
-		// Echo back body fields on create
-		{
-			path: "/api/users", method: "POST", status: 201,
-			bodyJSON: map[string]interface{}{
-				"id":      "new-user-001",
-				"name":    "{{.body.name}}",
-				"email":   "{{.body.email}}",
-				"created": true,
-			},
-		},
-		// Echo path param + query param on update
-		{
-			path: "/api/users/:id", method: "PUT", status: 200,
-			bodyJSON: map[string]interface{}{
-				"id":      "{{.path.id}}",
-				"name":    "{{.body.name}}",
-				"updated": true,
-			},
-		},
-		// Query param usage
-		{
-			path: "/api/search", method: "GET", status: 200,
-			bodyJSON: map[string]interface{}{
-				"query":   "{{.query.q}}",
-				"page":    "{{.query.page}}",
-				"results": []interface{}{},
-			},
-		},
-		// Text body with template
-		{
-			path: "/api/greet/:name", method: "GET", status: 200,
-			bodyText: "Hello, {{.path.name}}! Welcome to {{.query.from}}.",
-		},
-	}
-
-	for i, e := range endpoints {
-		rc := models.ResponseConfig{
-			StatusCode: e.status,
-			Headers:    jsonHeader,
-		}
-		if e.bodyText != "" {
-			rc.Headers = map[string]string{"Content-Type": "text/plain"}
-			rc.BodyText = e.bodyText
-		} else {
-			rc.BodyJSON = e.bodyJSON
-		}
-
-		endpoint := models.MockEndpoint{
-			ID:             uuid.New(),
-			MockServerID:   server.ID,
-			Path:           e.path,
-			Method:         e.method,
-			MatchConfig:    e.matchConfig,
-			ResponseConfig: rc,
-			Priority:       i,
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
-		db.Create(&endpoint)
-	}
-}
 
 func seedMockRequests(db *gorm.DB, server models.MockServer) {
 	methods := []string{"GET", "POST", "PUT", "DELETE"}

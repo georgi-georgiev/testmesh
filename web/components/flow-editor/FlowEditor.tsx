@@ -791,6 +791,19 @@ export default function FlowEditor({
                 node={selectedNode}
                 onNodeUpdate={handleNodeUpdate}
                 onClose={() => setShowProperties(false)}
+                stepOutputs={(() => {
+                  if (!selectedNode || !definition?.steps) return {};
+                  const outputs: Record<string, Record<string, unknown>> = {};
+                  for (const step of definition.steps) {
+                    if (step.id === selectedNode.id) break;
+                    if (step.output) {
+                      outputs[step.id ?? step.name ?? ''] = Object.fromEntries(
+                        Object.keys(step.output).map((k) => [k, `\${${step.id}.${k}}`])
+                      );
+                    }
+                  }
+                  return outputs;
+                })()}
               />
             )}
 

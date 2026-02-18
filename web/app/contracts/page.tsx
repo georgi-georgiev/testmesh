@@ -21,17 +21,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Trash2, X, Search, FileText, Download } from 'lucide-react';
+import { Eye, Trash2, X, Search, FileText, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+
+const PAGE_SIZE = 5;
 
 export default function ContractsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [consumerFilter, setConsumerFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
+  const [page, setPage] = useState(0);
+
+  const resetPage = () => setPage(0);
 
   const { data, isLoading, error } = useContracts({
     consumer: consumerFilter || undefined,
     provider: providerFilter || undefined,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
 
   const deleteContract = useDeleteContract();
@@ -48,6 +55,9 @@ export default function ContractsPage() {
   };
 
   const contracts = data?.contracts || [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   const filteredContracts = contracts.filter((contract) => {
     const matchesSearch =
       contract.consumer.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -62,6 +72,7 @@ export default function ContractsPage() {
     setSearchQuery('');
     setConsumerFilter('');
     setProviderFilter('');
+    resetPage();
   };
 
   if (error) {
@@ -102,20 +113,20 @@ export default function ContractsPage() {
                 <Input
                   placeholder="Search contracts..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); resetPage(); }}
                   className="pl-10"
                 />
               </div>
               <Input
                 placeholder="Filter by consumer..."
                 value={consumerFilter}
-                onChange={(e) => setConsumerFilter(e.target.value)}
+                onChange={(e) => { setConsumerFilter(e.target.value); resetPage(); }}
                 className="w-64"
               />
               <Input
                 placeholder="Filter by provider..."
                 value={providerFilter}
-                onChange={(e) => setProviderFilter(e.target.value)}
+                onChange={(e) => { setProviderFilter(e.target.value); resetPage(); }}
                 className="w-64"
               />
               {hasActiveFilters && (
@@ -268,9 +279,34 @@ export default function ContractsPage() {
         </Card>
       )}
 
-      {data && data.total > 0 && (
-        <div className="mt-4 text-sm text-muted-foreground text-center">
-          Showing {filteredContracts.length} of {data.total} contracts
+      {total > 0 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total} contracts
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Button>
+              <span>Page {page + 1} of {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

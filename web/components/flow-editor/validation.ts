@@ -368,24 +368,37 @@ function validateDelay(config: any, nodeId: string, stepId: string, issues: Vali
   }
 }
 
+function parseAssertions(raw: any): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } catch {}
+  }
+  return [];
+}
+
 function validateAssert(config: any, nodeId: string, stepId: string, issues: ValidationIssue[]): void {
-  if (!config.expression || config.expression.trim() === '') {
+  const assertions = parseAssertions(config.assertions);
+  if (assertions.length === 0) {
     issues.push({
-      id: `${nodeId}-no-expression`,
+      id: `${nodeId}-no-assertions`,
       severity: 'error',
-      message: 'Assertion expression is required',
-      field: 'expression',
+      message: 'At least one assertion is required',
+      field: 'assertions',
       nodeId,
       stepId,
     });
-  } else if (!looksLikeValidExpression(config.expression)) {
-    issues.push({
-      id: `${nodeId}-malformed-expression`,
-      severity: 'warning',
-      message: 'Expression might have unmatched brackets or braces',
-      field: 'expression',
-      nodeId,
-      stepId,
+  } else {
+    assertions.forEach((expr, i) => {
+      if (typeof expr === 'string' && expr.trim() !== '' && !looksLikeValidExpression(expr)) {
+        issues.push({
+          id: `${nodeId}-malformed-assertion-${i}`,
+          severity: 'warning',
+          message: `Assertion ${i + 1} might have unmatched brackets or braces`,
+          field: 'assertions',
+          nodeId,
+          stepId,
+        });
+      }
     });
   }
 }

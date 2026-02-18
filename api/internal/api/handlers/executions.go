@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -152,6 +153,12 @@ func (h *ExecutionHandler) List(c *gin.Context) {
 	status := models.ExecutionStatus(c.Query("status"))
 	limit := 20
 	offset := 0
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v >= 0 {
+		offset = v
+	}
 
 	executions, total, err := h.execRepo.List(flowID, status, limit, offset)
 	if err != nil {

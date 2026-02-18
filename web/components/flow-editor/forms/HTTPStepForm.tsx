@@ -85,11 +85,15 @@ export default function HTTPStepForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [bodyFormat, setBodyFormat] = useState<'json' | 'raw'>('json');
 
-  // Parse headers from config
+  // Parse headers from config (handle both object and JSON-string formats)
   const headers: HeaderEntry[] = (() => {
-    const h = config.headers as Record<string, string> | undefined;
+    let h = config.headers as Record<string, string> | string | undefined;
     if (!h) return [];
-    return Object.entries(h).map(([key, value]) => ({
+    if (typeof h === 'string') {
+      try { h = JSON.parse(h); } catch { return []; }
+    }
+    if (typeof h !== 'object' || Array.isArray(h)) return [];
+    return Object.entries(h as Record<string, string>).map(([key, value]) => ({
       key,
       value,
       enabled: true,

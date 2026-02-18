@@ -273,18 +273,18 @@ func NewRouter(db *gorm.DB, logger *zap.Logger, wsHub *websocket.Hub, port int) 
 				environments.POST("/:id/duplicate", envHandler.Duplicate)
 				environments.GET("/:id/export", envHandler.Export)
 			}
-		}
 
-		// Execution routes
-		executions := v1.Group("/executions")
-		{
-			executions.POST("", executionHandler.Create)
-			executions.GET("", executionHandler.List)
-			executions.GET("/:id", executionHandler.Get)
-			executions.POST("/:id/cancel", executionHandler.Cancel)
-			executions.GET("/:id/logs", executionHandler.GetLogs)
-			executions.GET("/:id/steps", executionHandler.GetSteps)
-			executions.GET("/:id/steps/:step_id", executionHandler.GetStep)
+			// Execution routes (workspace-scoped)
+			executions := ws.Group("/executions")
+			{
+				executions.POST("", executionHandler.Create)
+				executions.GET("", executionHandler.List)
+				executions.GET("/:id", executionHandler.Get)
+				executions.POST("/:id/cancel", executionHandler.Cancel)
+				executions.GET("/:id/logs", executionHandler.GetLogs)
+				executions.GET("/:id/steps", executionHandler.GetSteps)
+				executions.GET("/:id/steps/:step_id", executionHandler.GetStep)
+			}
 		}
 
 		// Mock server routes

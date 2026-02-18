@@ -55,7 +55,17 @@
       "mcp__plugin_exa-mcp-server_exa__web_search_exa",
       "Bash(git -C /Users/gosh/Dev/testmesh log --oneline -20)",
       "Bash(npm view:*)",
-      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__press_key"
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__press_key",
+      "Bash(PGPASSWORD=root /Applications/Postgres.app/Contents/Versions/latest/bin/psql:*)",
+      "Bash(/tmp/phase2_replacement.txt:*)",
+      "Bash(go vet:*)",
+      "Bash(DATABASE_URL=\"postgres://postgres:postgres@localhost:5432/testmesh?sslmode=disable\" go run:*)",
+      "Bash(DATABASE_URL=\"postgres://postgres:postgres@localhost:5432/testmesh?sslmode=disable\" psql:*)",
+      "Bash(python3:*)",
+      "Bash(/tmp/yamltest.go:*)",
+      "Bash(/tmp/yamltest2.go:*)",
+      "Bash(/tmp/yamltest3.go:*)",
+      "Bash(/Users/ggeorgiev/Dev/testmesh/api/cmd/seed/yamltest_temp/main.go:*)"
     ]
   }
 }

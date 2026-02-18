@@ -82,8 +82,8 @@ export const defaultConfigs: Record<ActionType, Record<string, any>> = {
     duration: '1s',
   },
   assert: {
-    expression: '',
-    message: '',
+    data: {},
+    assertions: [],
   },
   transform: {
     input: '',

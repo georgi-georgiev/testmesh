@@ -18,7 +18,7 @@ export const executionKeys = {
 };
 
 // Hooks for executions
-export function useExecutions(params?: { flow_id?: string; status?: ExecutionStatus }) {
+export function useExecutions(params?: { flow_id?: string; status?: ExecutionStatus; limit?: number; offset?: number }) {
   return useQuery({
     queryKey: executionKeys.list(params || {}),
     queryFn: () => executionApi.list(params),
