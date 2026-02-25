@@ -234,7 +234,7 @@ export default function StepWizard({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {step !== 'type' && (
@@ -275,7 +275,7 @@ export default function StepWizard({
                   <div key={category.id}>
                     <h3 className="text-sm font-medium mb-2">{category.label}</h3>
                     <p className="text-xs text-muted-foreground mb-3">{category.description}</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-3">
                       {categoryTypes.map((typeOption) => (
                         <button
                           key={typeOption.type}

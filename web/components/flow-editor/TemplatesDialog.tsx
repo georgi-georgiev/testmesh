@@ -114,7 +114,7 @@ export default function TemplatesDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[95vw] sm:w-[1800px] max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
@@ -316,7 +316,7 @@ export default function TemplatesDialog({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 pr-2">
+                  <div className="grid grid-cols-3 gap-4 pr-2">
                     {filteredTemplates.map((template) => {
                       const Icon = iconMap[template.icon] || FileText;
 
